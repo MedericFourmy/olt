@@ -32,7 +32,7 @@ from happypose.pose_estimators.cosypose.cosypose.utils.cosypose_wrapper import C
 from happypose.toolbox.inference.types import ObservationTensor
 from happypose.pose_estimators.cosypose.cosypose.config import LOCAL_DATA_DIR
 
-def create_K(fu, fv, ppu, ppv, **not_used):
+def intrinsics2K(fu, fv, ppu, ppv, **not_used):
     return np.array([
         fu, 0, ppu,
         0, fv, ppv,
@@ -42,12 +42,11 @@ def create_K(fu, fv, ppu, ppv, **not_used):
 
 obj_dataset = 'ycbv'
 cosy_wrapper = CosyPoseWrapper(dataset_name=obj_dataset, n_workers=8)
-pose_estimator = cosy_wrapper.pose_estimator
-
+pose_estimator = cosy_wrapper.pose_predictor
 # create an observation tensor for cosypose runner
 
 
-K = create_K(**cam['intrinsics_color'])
+K = intrinsics2K(**cam['intrinsics_color'])
 
 
 observation = ObservationTensor.from_numpy(rgb, None, K)
@@ -58,18 +57,15 @@ print(type(observation))
 
 # labels returned by cosypose are the same as the "local_data/urdfs/ycbv" ones
 # -> obj_000010 == banana
-predictions = cosy_wrapper.inference(observation)  # same
-# predictions, _ = cosy_wrapper.pose_estimator.run_inference_pipeline(
-#                 observation,
-#                 run_detector=True,
-#                 n_coarse_iterations=1, n_refiner_iterations=4)
+# preds = cosy_wrapper.inference(observation)  # same
+preds, _ = pose_estimator.run_inference_pipeline(observation, run_detector=True, n_coarse_iterations=1, n_refiner_iterations=2)
 
-if (isinstance(predictions, list)):
+if (isinstance(preds, list)):
     raise ValueError('NO OBJECT DETECTED IN THE IMAGE')
 
 
-# TODO: extract automatically the index from predictions.infos.label
-pose_happy = predictions.poses[0].numpy()
+# TODO: extract automatically the index from preds.infos.label
+pose_happy = preds.poses[0].numpy()
 print('pose_happy: ', pose_happy)
 
 
@@ -106,12 +102,12 @@ color_camera.intrinsics = pyicg.Intrinsics(**cam['intrinsics_color'])
 
 # Viewers
 color_viewer = pyicg.NormalColorViewer('color_viewer', color_camera, renderer_geometry)
-# color_viewer.StartSavingImages('tmp', 'bmp')
+# color_viewer.StartSavingImages('tmp', 'png')
 color_viewer.set_opacity(0.5)  # [0.0-1.0]
 tracker.AddViewer(color_viewer)
 
 # Renderers (preprocessing)
-color_depth_renderer = pyicg.FocusedBasicDepthRenderer('color_depth_renderer', renderer_geometry, color_camera)
+# color_depth_renderer = pyicg.FocusedBasicDepthRenderer('color_depth_renderer', renderer_geometry, color_camera)
 
 # TODO: FOR LOOP!
 # Bodies
@@ -155,7 +151,7 @@ region_model_path = tmp_dir / (body_name + '_region_model.bin')
 region_model = pyicg.RegionModel(body_name + '_region_model', body_banana, region_model_path.as_posix())
 
 renderer_geometry.AddBody(body_map[body_name])
-color_depth_renderer.AddReferencedBody(body_map[body_name])
+# color_depth_renderer.AddReferencedBody(body_map[body_name])
 
 
 # Modalities
@@ -194,4 +190,4 @@ print('ExecuteTrackingCycle (ms)', 1000*(time.time() - t))
 
 tracker.UpdateViewers(it)
 
-cv2.waitKey(0)
+# cv2.waitKey(0)
