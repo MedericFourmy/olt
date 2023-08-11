@@ -7,5 +7,5 @@ Building dependencies
 `mamba env update --name olt -f environment.yaml`  
 
 Then follow installation instructions from (except for conda env creation)
-- [happypose]{https://github.com/agimus-project/happypose/tree/dev}
-- [pyicg]{https://github.com/MedericFourmy/pyicg}
+- [happypose](https://github.com/agimus-project/happypose/tree/dev)
+- [pyicg](https://github.com/MedericFourmy/pyicg)
