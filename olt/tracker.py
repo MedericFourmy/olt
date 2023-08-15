@@ -59,11 +59,15 @@ class Tracker:
 
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
+
     
     def init(self):
         # Check if path exists
         if not self.tmp_dir.exists():
             self.tmp_dir.mkdir(parents=True)
+        self.imgs_dir = self.tmp_dir / 'imgs'
+        if not self.imgs_dir.exists():
+            self.imgs_dir.mkdir(parents=True)
         assert(self.obj_model_dir.exists())
 
         # Renderer for preprocessing
@@ -78,7 +82,7 @@ class Tracker:
 
         # Viewers
         color_viewer = pyicg.NormalColorViewer('color_viewer', self.color_camera, self.renderer_geometry)
-        color_viewer.StartSavingImages((self.tmp_dir / 'imgs').as_posix(), 'png')
+        color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
         color_viewer.set_opacity(0.5)  # [0.0-1.0]
         color_viewer.display_images = False
 
