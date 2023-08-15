@@ -14,10 +14,10 @@ import time
 import numpy as np
 from pathlib import Path
 from typing import Union
-
 import pyicg
 
 from olt.utils import tq_to_SE3
+from olt.config import TrackerConfig
 
 
 
@@ -47,10 +47,12 @@ class Tracker:
     def __init__(self, 
                  intrinsics: dict,
                  obj_model_dir: Union[str,Path],
-                 tmp_dir: Union[str,Path], 
-                 accepted_objs: Union[set[str],str]
+                 accepted_objs: Union[set[str],str],
+                 cfg: TrackerConfig
                  ) -> None:
-        self.tmp_dir = Path(tmp_dir)
+        print('TrackerConfig:\n', cfg)
+        self.cfg = cfg
+        self.tmp_dir = Path(self.cfg.tmp_dir_name)
         self.obj_model_dir = Path(obj_model_dir)
         self.accepted_objs = accepted_objs
 
@@ -60,14 +62,11 @@ class Tracker:
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
 
-    
     def init(self):
-        # Check if path exists
-        if not self.tmp_dir.exists():
-            self.tmp_dir.mkdir(parents=True)
+        # Check if paths exist
+        if not self.tmp_dir.exists(): self.tmp_dir.mkdir(parents=True)
         self.imgs_dir = self.tmp_dir / 'imgs'
-        if not self.imgs_dir.exists():
-            self.imgs_dir.mkdir(parents=True)
+        if not self.imgs_dir.exists(): self.imgs_dir.mkdir(parents=True)
         assert(self.obj_model_dir.exists())
 
         # Renderer for preprocessing
@@ -81,7 +80,7 @@ class Tracker:
         self.color_camera.intrinsics = pyicg.Intrinsics(**self.intrinsics)
 
         # Viewers
-        color_viewer = pyicg.NormalColorViewer('color_viewer', self.color_camera, self.renderer_geometry)
+        color_viewer = pyicg.NormalColorViewer(self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
         color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
         color_viewer.set_opacity(0.5)  # [0.0-1.0]
         color_viewer.display_images = False
@@ -114,9 +113,8 @@ class Tracker:
             self.tracker.AddOptimizer(self.optimizers[bname])
 
 
-        # tracker.n_update_iterations = 2
-        self.tracker.n_corr_iterations = 3
-        self.tracker.n_update_iterations = 3
+        self.tracker.n_corr_iterations = self.cfg.n_corr_iterations
+        self.tracker.n_update_iterations = self.cfg.n_update_iterations
         print('n_corr_iterations: ', self.tracker.n_corr_iterations)
         print('n_update_iterations: ', self.tracker.n_update_iterations)
 
@@ -193,7 +191,11 @@ class Tracker:
 
         # Implementation 2: matching
         
-
+    def update_K(self, K, width, height):
+        """
+        Some objects of pyicg do not allow update of K without some modifications (e.g. RendererGeometry).
+        """
+        raise NotImplementedError('update_K')
 
     def set_image(self, img: np.array):
         self.color_camera.image = img

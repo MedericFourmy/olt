@@ -3,12 +3,14 @@ from happypose.pose_estimators.cosypose.cosypose.utils.cosypose_wrapper import C
 from happypose.toolbox.inference.types import ObservationTensor
 from happypose.pose_estimators.cosypose.cosypose.config import LOCAL_DATA_DIR
 
+from olt.config import LocalizerConfig
+
 
 class Localizer:
 
-    def __init__(self, obj_dataset, threshold_detector: float = 0.0, n_workers=4) -> None:
+    def __init__(self, obj_dataset, cfg: LocalizerConfig, n_workers=4) -> None:
         self.obj_dataset = obj_dataset
-        self.threshold_detector = threshold_detector
+        self.detector_threshold = cfg.detector_threshold
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Cosypose
@@ -38,7 +40,7 @@ class Localizer:
         print('# detections: ', len(predictions.infos))
         for i in range(len(predictions)):
             print('Det score/label: ', predictions.infos['score'][i], predictions.infos['label'][i])
-            if predictions.infos['score'][i] > self.threshold_detector:
+            if predictions.infos['score'][i] > self.detector_threshold:
                 obj_id = predictions.infos['label'][i]
                 preds[obj_id] = poses[i].numpy() 
             else:

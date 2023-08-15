@@ -9,3 +9,12 @@ Building dependencies
 Then follow installation instructions from (except for conda env creation)
 - [happypose](https://github.com/agimus-project/happypose/tree/dev)
 - [pyicg](https://github.com/MedericFourmy/pyicg)
+
+
+TODO 
+----
+- Fake localizer using bop ground truth
+- create video from images
+- BOP output formatting
+- BOP eval toolkit script run
+

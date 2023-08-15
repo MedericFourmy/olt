@@ -5,6 +5,10 @@ from PIL import Image
 
 from olt.utils import Kres2intrinsics
 
+import resource
+# Increase amount of max files open by this process to the maximum hard limit
+soft_limit, hard_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (hard_limit, hard_limit))
 
 # BOP data READER
 # - for each new scene, load all images in memory
@@ -57,6 +61,7 @@ class BOPDataReader:
         # Extract scene images
         rgb_imgs_dir = scene_path / 'rgb'
         rgb_imgs_paths = [p.as_posix() for p in sorted(rgb_imgs_dir.iterdir())]
+        print(f'Scene {scene_id} # images: ', len(rgb_imgs_paths))
 
         # Limit nb of imgs for quicker tests
         rgb_imgs_paths = rgb_imgs_paths[:nb_img_loaded]
