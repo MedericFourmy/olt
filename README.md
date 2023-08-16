@@ -14,7 +14,6 @@ Then follow installation instructions from (except for conda env creation)
 TODO 
 ----
 - Fake localizer using bop ground truth
-- create video from images
 - BOP output formatting
 - BOP eval toolkit script run
 
