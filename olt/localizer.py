@@ -8,13 +8,13 @@ from olt.config import LocalizerConfig
 
 class Localizer:
 
-    def __init__(self, obj_dataset, cfg: LocalizerConfig, n_workers=4) -> None:
+    def __init__(self, obj_dataset, cfg: LocalizerConfig) -> None:
         self.obj_dataset = obj_dataset
         self.detector_threshold = cfg.detector_threshold
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Cosypose
-        cosy_wrapper = CosyPoseWrapper(dataset_name=self.obj_dataset, n_workers=n_workers)
+        cosy_wrapper = CosyPoseWrapper(dataset_name=self.obj_dataset, n_workers=cfg.n_workers)
         self.pose_estimator = cosy_wrapper.pose_predictor
 
         # Megapose (TODO)

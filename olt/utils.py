@@ -4,6 +4,9 @@ import quaternion
 from pathlib import Path
 import cv2
 from PIL import Image
+import resource
+print_mem_usage = lambda: print(f'Memory usage: {int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000} (Mb)')
+
 
 
 
@@ -41,31 +44,40 @@ def Kres2intrinsics(K, width, height):
 
 
 def create_video_from_images(img_dir: Path, output_name='out.mp4', ext: str ='.png', fps: int = 30.0):
-    img_files = list(sorted(img_dir.glob(f'*{ext}')))
+    # img_files = list(sorted(img_dir.glob(f'*{ext}')))
+    img_files = list(img_dir.glob(f'*{ext}'))
+
+    # img file name format is unfortunate: normal_viewer_image_18 -> not lexicographic
+    save_ids = [int(name.stem.split('_')[-1]) for name in img_files]
+
+    img_files = [name for id, name in sorted(zip(save_ids, img_files))]
+
+
     if len(img_files) == 0:
         raise FileNotFoundError(f'{img_dir.as_posix()} directory does not contain {ext} files')
 
-    frame1 = cv2.imread(img_files[0])
+    # Get dimensions of of the 
+    h, w, _ = cv2.imread(img_files[0].as_posix()).shape
 
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    video = cv2.VideoWriter(
-        filename=output_name, fourcc=fourcc, fps=fps, frameSize=frame1.shape
+    output_path = img_dir / output_name
+    video = cv2.VideoWriter(filename=output_path.as_posix(), 
+                            fourcc=cv2.VideoWriter_fourcc(*"mp4v"), 
+                            fps=fps, frameSize=(w, h)
     )
 
-    # Read each image and write it to the video
-    for image in img_files:
-        # read the image using OpenCV
-        frame = cv2.imread(image)
-        # Optional step to resize the input image to the dimension stated in the
-        # VideoWriter object above
-        # frame = cv2.resize(frame, dsize=(430, 430))
+    for img_path in img_files:
+        frame = cv2.imread(img_path.as_posix())
         video.write(frame)
     
-    # Exit the video writer
     video.release()
+    print(f'Written {output_path}')
 
+def obj_id2label(id):
+    return f'obj_{id:06}'
 
 
 if __name__ == '__main__':
     img_dir = Path('../tmp/imgs/')
-    create_video_from_images(img_dir)
+    create_video_from_images(img_dir, fps=30)
+
+    # print(obj_id2label(48))

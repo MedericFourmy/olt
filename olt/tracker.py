@@ -13,19 +13,15 @@ Notations
 import time
 import numpy as np
 from pathlib import Path
+import shutil
 from typing import Union
 import pyicg
+
+
 
 from olt.utils import tq_to_SE3
 from olt.config import TrackerConfig
 
-
-
-# ACCEPTED_OBJECTS = 'all'
-ACCEPTED_OBJECTS = {
-    'obj_000010',  # banana
-    'obj_000016',  # wood log
-    }
 
 
 def detection_id_conversion(det_id: str, ds_name: str):
@@ -41,6 +37,7 @@ class Tracker:
     params:
     - intrinsics: camera intrinsics as dict with keys: fu, fv, ppu, ppv, width, height
     - obj_model_dir: path to directory containing <model_name>.obj files
+                     !! BOP datasets contain .ply objects, not .obj, we need to find them in another folder
     - tmp_dir: directory where cached computations are stored (e.g. RegionModel files)
     - accepted_objs: determines which object to load ('all' str or list of <model_name> str)
     """
@@ -66,7 +63,10 @@ class Tracker:
         # Check if paths exist
         if not self.tmp_dir.exists(): self.tmp_dir.mkdir(parents=True)
         self.imgs_dir = self.tmp_dir / 'imgs'
-        if not self.imgs_dir.exists(): self.imgs_dir.mkdir(parents=True)
+        # erase image directory
+        if self.imgs_dir.exists(): 
+            shutil.rmtree(self.imgs_dir.as_posix(), ignore_errors=True)
+        self.imgs_dir.mkdir(parents=True)
         assert(self.obj_model_dir.exists())
 
         # Renderer for preprocessing
@@ -78,12 +78,14 @@ class Tracker:
         quat_d_c_xyzw = [0,0,0,1]
         self.color_camera.color2depth_pose = tq_to_SE3(trans_d_c, quat_d_c_xyzw)
         self.color_camera.intrinsics = pyicg.Intrinsics(**self.intrinsics)
+        self.color_camera.camera2world_pose = np.eye(4)  # assume camera is fixed and aligned with world frame
 
         # Viewers
         color_viewer = pyicg.NormalColorViewer(self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
-        color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
+        if self.cfg.viewer_save:
+            color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
         color_viewer.set_opacity(0.5)  # [0.0-1.0]
-        color_viewer.display_images = False
+        color_viewer.display_images = self.cfg.viewer_display
 
         # Main class
         self.tracker = pyicg.Tracker('tracker', synchronize_cameras=False)
@@ -159,11 +161,12 @@ class Tracker:
         ###########################
         ## TEST BODY INIT
         ###########################
-        T = np.eye(4)
-        T[2,3] = -0.8 
+        T_bc = np.eye(4)
+        # T_bc[2,3] = -0.8 
+        T_bc[2,3] = -1000000000000
         for body in bodies.values():
         #     T[0,3] = np.random.random() - 0.25
-            body.body2world_pose = T
+            body.body2world_pose = T_bc
         ###########################
         ###########################
 
@@ -184,12 +187,13 @@ class Tracker:
         """
 
 
-        # Implementation 1: just update the current estimates, 1 object per cat
+        # Implementation 1: just update the current e
+        # stimates, 1 object per cat
         for det_id, T_co in detections.items():
             obj_id = detection_id_conversion(det_id, 'ycbv')
             self.bodies[obj_id].body2world_pose = T_co
 
-        # Implementation 2: matching
+        # Implementation 2: matching (if multiple instances of same object)
         
     def update_K(self, K, width, height):
         """

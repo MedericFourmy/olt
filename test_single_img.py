@@ -1,42 +1,56 @@
 import cv2
+import numpy as np
+import json
 import time
-import resource
-print_mem_usage = lambda: print(f'Memory usage: {int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000} (Mb)')
+from PIL import Image
 
 from olt.tracker import Tracker
 from olt.localizer import Localizer
-from olt.evaluation_tools import BOPDataReader
-from olt.config import BOP_DS_DIRS, OBJECT_MODEL_DIRS
+from olt.utils import Kres2intrinsics, print_mem_usage
+from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
 
+#############################
+"""
+    Image + info loading
+
+    For this example, manually get one image + cam intrinsics of the views from a bop dataset
+    To load a full scene, use BOPDatasetReader in evaluation_tools.py
+"""
 DS_NAME = 'ycbv'
-reader = BOPDataReader(BOP_DS_DIRS[DS_NAME])
-reader.load_scene(48, nb_img_loaded=1)
-print_mem_usage()
+SCENE_ID = 48
+VIEW_ID = 1
+
+scene_id_str = '{SCENE_ID:06}'
+view_id_str = '{VIEW_ID:06}'
+rgb_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/rgb/000001.png'
+scene_cam_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/scene_camera.json'
+d_scene_camera = json.loads(scene_cam_full_path.read_text())
+K = d_scene_camera[str(VIEW_ID)]['cam_K']
+K = np.array(K).reshape((3,3))
+
+im = Image.open(rgb_full_path)
+rgb = np.array(im, dtype=np.uint8)
+height, width, _ = rgb.shape
+intrinsics = Kres2intrinsics(K, width, height)
+#############################
+
 
 ## HAPPYPOSE
 THRESHOLD_DETECTOR = 0.6
 
-# accepted_objs = {
-#     'obj_000010',
-#     'obj_000016',
-# }
 accepted_objs = 'all'
-tracker = Tracker(reader.get_intrinsics(), OBJECT_MODEL_DIRS[DS_NAME], 'tmp', accepted_objs)
-print_mem_usage()
-
+tcfg = TrackerConfig()
+tcfg.n_corr_iterations
+tcfg.viewer_display = True
+tcfg.viewer_save = True
+tracker = Tracker(intrinsics, OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg)
 tracker.init()
-print_mem_usage()
 
-localizer = Localizer('ycbv', THRESHOLD_DETECTOR, n_workers=2)
-print_mem_usage()
+lcfg = LocalizerConfig
+lcfg.n_workers = 2
+localizer = Localizer(DS_NAME, lcfg)
 
-rgb = reader.get_img(0)
-poses = localizer.predict(rgb, reader.K, n_coarse=1, n_refiner=1)
-print_mem_usage()
-
-poses = localizer.predict(rgb, reader.K, n_coarse=1, n_refiner=1)
-print_mem_usage()
-
+poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
 
 tracker.detected_bodies(poses)
 tracker.set_image(rgb)
