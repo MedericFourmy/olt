@@ -13,7 +13,5 @@ Then follow installation instructions from (except for conda env creation)
 
 TODO 
 ----
-- Fake localizer using bop ground truth
 - BOP output formatting
 - BOP eval toolkit script run
-
