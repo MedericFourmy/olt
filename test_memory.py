@@ -2,8 +2,10 @@
 
 # Nothing -> 13 Mb
 from olt.tracker import Tracker  # 93 Mb
-from olt.config import BOP_DS_DIRS
-# from localizer import Localizer  # 530 Mb
+from olt.config import BOP_DS_DIRS, TrackerConfig
+from olt.utils import print_mem_usage
+print_mem_usage()
+from olt.localizer import Localizer  # 530 Mb
 
 CAMERA_PATH = 'cam_d435_640.yaml'
 
@@ -14,8 +16,10 @@ DS_NAME = 'ycbv'
 #     # 'obj_000016',
 # }
 accepted_objs = 'all'
-tracker = Tracker(CAMERA_PATH, BOP_DS_DIRS[DS_NAME], 'tmp', accepted_objs)
+tcfg = TrackerConfig()
+
+dummy_intrinsics = {'fu': 1, 'fv': 1, 'ppu': 0, 'ppv': 0, 'width': 100, 'height': 100}
+tracker = Tracker(dummy_intrinsics, BOP_DS_DIRS[DS_NAME], accepted_objs, tcfg)
 tracker.init()
 
-import resource
-print(f'Memory usage: {int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000} (Mb)')
+print_mem_usage()
