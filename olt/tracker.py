@@ -9,7 +9,7 @@ Notations
 """
 
 
-
+import cv2
 import time
 import numpy as np
 from pathlib import Path
@@ -108,7 +108,7 @@ class Tracker:
             self.renderer_geometry.AddBody(body)
 
             # Add remove optimizers?
-            self.optimizers[bname] = pyicg.Optimizer(bname+'_optimizer')
+            self.optimizers[bname] = pyicg.Optimizer(bname+'_optimizer', self.cfg.tikhonov_parameter_rotation, self.cfg.tikhonov_parameter_translation)
 
             # Modalities
             self.optimizers[bname].AddModality(self.region_modalities[bname])
@@ -215,9 +215,11 @@ class Tracker:
 
         t = time.time()
         self.tracker.ExecuteTrackingCycle(self.iteration)
-        print('ExecuteTrackingCycle (ms)', 1000*(time.time() - t))
+        dt = time.time() - t
 
         self.iteration += 1
+
+        return dt
 
     def update_intrinsics(self, intrinsics):
         self.intrinsics = intrinsics

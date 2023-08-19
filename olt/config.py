@@ -20,6 +20,8 @@ class TrackerConfig:
     n_update_iterations: int = 5
     viewer_display: bool = False
     viewer_save: bool = False
+    tikhonov_parameter_rotation: float = 1000.0
+    tikhonov_parameter_translation: float = 30000.0
 
 
 @dataclass

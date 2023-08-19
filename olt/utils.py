@@ -5,8 +5,8 @@ from pathlib import Path
 import cv2
 from PIL import Image
 import resource
-print_mem_usage = lambda: print(f'Memory usage: {int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000} (Mb)')
-
+get_mem_usage = lambda : f'Memory usage: {int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)/1000} (Mb)'
+print_mem_usage = lambda : print(get_mem_usage())
 
 
 
@@ -43,7 +43,7 @@ def Kres2intrinsics(K, width, height):
     }
 
 
-def create_video_from_images(img_dir: Path, output_name='out.mp4', ext: str ='.png', fps: int = 30.0):
+def create_video_from_images(img_dir: Path, vid_name='out.mp4', ext: str ='.png', fps: int = 30.0):
     # img_files = list(sorted(img_dir.glob(f'*{ext}')))
     img_files = list(img_dir.glob(f'*{ext}'))
 
@@ -59,7 +59,7 @@ def create_video_from_images(img_dir: Path, output_name='out.mp4', ext: str ='.p
     # Get dimensions of of the 
     h, w, _ = cv2.imread(img_files[0].as_posix()).shape
 
-    output_path = img_dir / output_name
+    output_path = img_dir / vid_name
     video = cv2.VideoWriter(filename=output_path.as_posix(), 
                             fourcc=cv2.VideoWriter_fourcc(*"mp4v"), 
                             fps=fps, frameSize=(w, h)
