@@ -6,14 +6,14 @@ build-backend = "hatchling.build"
 name = "olt"
 version = "0.0.1"
 authors = [
-  { name="Example Author", email="author@example.com" },
+  { name="Mederic Fourmy", email="mederic.fourmy@cvut.cz" },
 ]
 description = "A small example package"
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: BSD-3-Clause  License",
     "Operating System :: OS Independent",
 ]
 
