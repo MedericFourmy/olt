@@ -78,7 +78,7 @@ class Tracker:
         quat_d_c_xyzw = [0,0,0,1]
         self.color_camera.color2depth_pose = tq_to_SE3(trans_d_c, quat_d_c_xyzw)
         self.color_camera.intrinsics = pyicg.Intrinsics(**self.intrinsics)
-        self.color_camera.camera2world_pose = np.eye(4)  # assume camera is fixed and aligned with world frame
+        # self.color_camera.camera2world_pose = np.eye(4)  # assume camera is fixed and aligned with world frame
 
         # Viewers
         color_viewer = pyicg.NormalColorViewer(self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
