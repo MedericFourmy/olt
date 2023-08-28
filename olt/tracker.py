@@ -27,7 +27,11 @@ from olt.config import TrackerConfig
 def detection_id_conversion(det_id: str, ds_name: str):
     if ds_name == 'ycbv':
         # For ycbv+CosyPose, labels from detection are look like 'ycbv-obj_000010'
-        return det_id.split('-')[1]
+        if 'ycbv-' in det_id:
+            return det_id.split('-')[1]
+        else:
+            assert det_id.startswith("obj_")
+            return det_id
     else:
         raise ValueError(f'Unknown dataset name {ds_name}')
 
@@ -191,7 +195,13 @@ class Tracker:
         # stimates, 1 object per cat
         for det_id, T_co in detections.items():
             obj_id = detection_id_conversion(det_id, 'ycbv')
-            self.bodies[obj_id].body2world_pose = T_co
+            if isinstance(T_co, pyicg.Body):
+                self.bodies[obj_id].body2world_pose = T_co.body2world_pose
+            elif isinstance(T_co, np.ndarray):
+                assert T_co.shape == (4,4)
+                self.bodies[obj_id].body2world_pose = T_co
+            else:
+                raise ValueError(f"Expected homogenous transformation or pyicg bodies, but got {type(T_co)}")
 
         # Implementation 2: matching (if multiple instances of same object)
         
