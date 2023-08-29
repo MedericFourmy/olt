@@ -27,4 +27,14 @@ Killing the actors running in their processes is done by brute force (for now):
 TODO 
 ----
 - BOP eval toolkit script run
+<<<<<<< HEAD
 - Fix Coypose bug when no detection
+=======
+<<<<<<< HEAD
+
+
+
+=======
+- Fix Coypose bug when no detection
+>>>>>>> 7dd631e (rebasing thespian implementation on Complete bop evaluation script)
+>>>>>>> rebasing thespian implementation on Complete bop evaluation script
