@@ -1,9 +1,14 @@
 import torch
-from happypose.pose_estimators.cosypose.cosypose.utils.cosypose_wrapper import CosyPoseWrapper
+
 from happypose.toolbox.inference.types import ObservationTensor
+from happypose.pose_estimators.cosypose.cosypose.utils.cosypose_wrapper import CosyPoseWrapper
 from happypose.pose_estimators.cosypose.cosypose.config import LOCAL_DATA_DIR
 
 from olt.config import LocalizerConfig
+
+
+
+
 
 
 class Localizer:
@@ -41,8 +46,9 @@ class Localizer:
         for i in range(len(predictions)):
             print('Det score/label: ', predictions.infos['score'][i], predictions.infos['label'][i])
             if predictions.infos['score'][i] > self.detector_threshold:
-                obj_id = predictions.infos['label'][i]
-                preds[obj_id] = poses[i].numpy() 
+                obj_label = predictions.infos['label'][i]
+                obj_name = obj_label2name(obj_label, 'ycbv')
+                preds[obj_name] = poses[i].numpy() 
             else:
                 print('-> Skip detection: ', predictions.infos['label'][i])
         

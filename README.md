@@ -13,5 +13,5 @@ Then follow installation instructions from (except for conda env creation)
 
 TODO 
 ----
-- BOP output formatting
 - BOP eval toolkit script run
+- Fix Coypose bug when no detection
