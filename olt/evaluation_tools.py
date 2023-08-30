@@ -107,16 +107,16 @@ def append_result(results, scene_id, obj_id, view_id, score, TCO, dt):
 
 
 
-def run_bop_evaluation(filename, eval_dir=''):
+def run_bop_evaluation(filename, results_dir_name, evaluations_dir_name):
     myenv = os.environ.copy()
 
     BOP_TOOLKIT_DIR = Path(bop_toolkit_lib.__file__).parent.parent
     POSE_EVAL_SCRIPT_PATH = BOP_TOOLKIT_DIR / "scripts/eval_bop19_pose.py"
 
     # 
-    root_dir = os.getcwd()
-    results_path = os.path.join(root_dir, 'results')
-    eval_path = 'evals'
+    root_dir = Path(os.getcwd())
+    results_path = root_dir / results_dir_name
+    eval_path = root_dir / evaluations_dir_name
 
     renderer_type = 'vispy'  # other options: 'cpp', 'python'
     cmd = [

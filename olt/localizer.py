@@ -5,7 +5,7 @@ from happypose.pose_estimators.cosypose.cosypose.utils.cosypose_wrapper import C
 from happypose.pose_estimators.cosypose.cosypose.config import LOCAL_DATA_DIR
 
 from olt.config import LocalizerConfig
-
+from olt.utils import obj_label2name
 
 
 
@@ -26,15 +26,12 @@ class Localizer:
 
 
     def predict(self, rgb, K, n_coarse=1, n_refiner=3):
-        print('Localizer predict')
         observation = ObservationTensor.from_numpy(rgb, None, K)
         if self.device.type == 'cuda':
-            print('observation.cuda()')
             observation.cuda()
 
         # labels returned by cosypose are the same as the "local_data/urdfs/ycbv" ones
         # -> obj_000010 == banana
-        print('self.pose_estimator.run_inference_pipeline')
         predictions, _ = self.pose_estimator.run_inference_pipeline(observation,
                                                                     run_detector=True,
                                                                     n_coarse_iterations=n_coarse, 
@@ -42,9 +39,9 @@ class Localizer:
         # Send all poses to cpu to be able to process them
         poses = predictions.poses.cpu()
         preds = {}
-        print('# detections: ', len(predictions.infos))
+        # print('# detections: ', len(predictions.infos))
         for i in range(len(predictions)):
-            print('Det score/label: ', predictions.infos['score'][i], predictions.infos['label'][i])
+            # print('Det score/label: ', predictions.infos['score'][i], predictions.infos['label'][i])
             if predictions.infos['score'][i] > self.detector_threshold:
                 obj_label = predictions.infos['label'][i]
                 obj_name = obj_label2name(obj_label, 'ycbv')

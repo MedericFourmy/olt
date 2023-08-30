@@ -175,10 +175,10 @@ class Tracker:
         FOR NOW: assume unique objects and reinitialize there pose
         """
 
-
-        # Implementation 1: just update the current e
-        # stimates, 1 object per cat
+        # Implementation 1: just update the current estimates, 1 object per cat
+        self.active_tracks = []
         for obj_name, T_co in detections.items():
+            self.active_tracks.append(obj_name)
             if isinstance(T_co, pyicg.Body):
                 self.bodies[obj_name].body2world_pose = T_co.body2world_pose
             elif isinstance(T_co, np.ndarray):
@@ -187,13 +187,6 @@ class Tracker:
             else:
                 raise ValueError(f"Expected homogenous transformation or pyicg bodies, but got {type(T_co)}")
 
-        # # Implementation 1: just update the current estimates, 1 object per cat
-        # # Reset all active tracks
-        # self.active_tracks = []
-        # for obj_name, T_co in detections.items():
-        #     self.bodies[obj_name].body2world_pose = T_co
-        #     self.active_tracks.append(obj_name)
-        
         # Implementation 2: matching (if multiple instances of same object)
         
     def update_K(self, K, width, height):
