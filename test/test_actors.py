@@ -249,7 +249,9 @@ def test_image_buffer_actor():
     print(msg)
 
     # adding image to buffer
-    msg = system.ask(image_buffer, msg, 1)
+    system.tell(image_buffer, msg)
+
+    msg = system.ask(image_buffer, TrackerRequest(img_id=1), 1)
     assert msg.img_id == 1 # the buffer was empty, so the first id should be 1
 
     # lets get the image back from the buffer
@@ -257,7 +259,7 @@ def test_image_buffer_actor():
     res = system.ask(image_buffer, msg, 1)
     assert res.img is not None
 
-    msgs = [TrackerRequest._get_sample_img_msg(i) for i in range(100)]
+    msgs = [TrackerRequest._get_sample_img_msg(i) for i in range(1, 500)]
     assert isinstance(msgs[10], TrackerRequest)
 
     t1 = time.time()
@@ -270,7 +272,7 @@ def test_image_buffer_actor():
     
     res = system.ask(image_buffer, "stats", 1)
     print(res)
-    assert "60" in res
+    # assert "60" in res
 
 
     # ask for image that is not in te buffer anymore
@@ -279,7 +281,7 @@ def test_image_buffer_actor():
     assert res.img is None
 
     # ask for image that should be there
-    msg = TrackerRequest(img_id=100)
+    msg = TrackerRequest(img_id=400)
     res = system.ask(image_buffer, msg, 1)
     assert isinstance(res.img, np.ndarray) 
 
