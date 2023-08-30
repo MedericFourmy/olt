@@ -17,11 +17,13 @@ pip install thespian
 
 ```bash
 python olt/actor_tracker.py
+
+# observe the some output
+watch tail test.log
 ```
 
 Killing the actors running in their processes is done by brute force (for now):
 `kill -9 $(ps ax | grep Actor | fgrep -v grep | awk '{ print $1 }')`
-
 
 
 TODO 
