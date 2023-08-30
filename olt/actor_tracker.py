@@ -430,6 +430,9 @@ class TrackerActor(Actor):
             if message.has_poses_cosy():
                 self.tracker.detected_bodies(message.poses_cosy)
             elif message.has_poses_tracker():
+                # message.poses_tracker contains poses from the prev time
+                # if images in order, the bodies need no update
+                # update only bodies that are avialable
                 self.tracker.detected_bodies(message.poses_tracker)
             if message.has_image():
                 self.tracker.set_image(message.img)
@@ -460,10 +463,7 @@ logcfg = { 'version': 1,
 
 if __name__ == "__main__":
 
-    # try:
     system = ActorSystem('multiprocTCPBase', logDefs=logcfg)
-    # system = ActorSystem()
-
 
     img_streamer = system.createActor(ImageStreamerActor)
     dispatcher = system.createActor(DispatcherActor)
