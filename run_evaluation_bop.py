@@ -41,7 +41,7 @@ LOCALIZE_EVERY = 20
 
 PRINT_INFO_EVERY = 60
 
-USE_GT_FOR_LOCALIZATION = True
+USE_GT_FOR_LOCALIZATION = False
 
 ds_name = eval_cfg.ds_name
 # ds_name = 'rotd'
@@ -84,9 +84,10 @@ for sid in all_sids:
         #######################################
         t = time.time()
         if i % LOCALIZE_EVERY == 0:
-            poses = (localizer.predict(rgb, K, n_coarse=1, n_refiner=1) 
-                     if not USE_GT_FOR_LOCALIZATION
-                     else reader.predict_gt(sid=sid, vid=vid))
+            if USE_GT_FOR_LOCALIZATION:
+                poses = reader.predict_gt(sid=sid, vid=vid)
+            else:
+                poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=2)
                     
         dt_localize = time.time() - t
 
