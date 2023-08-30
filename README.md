@@ -10,6 +10,19 @@ Then follow installation instructions from (except for conda env creation)
 - [happypose](https://github.com/agimus-project/happypose/tree/dev)
 - [pyicg](https://github.com/MedericFourmy/pyicg)
 
+```bash
+mamba install setproctitle
+pip install thespian
+```
+
+```bash
+python olt/actor_tracker.py
+```
+
+Killing the actors running in their processes is done by brute force (for now):
+`kill -9 $(ps ax | grep Actor | fgrep -v grep | awk '{ print $1 }')`
+
+
 
 TODO 
 ----
