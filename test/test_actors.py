@@ -4,7 +4,6 @@ import logging
 import time
 
 import numpy as np
-<<<<<<< HEAD
 from olt.actor_tracker import ImageBuffer, ImageStreamerActor, ActorConfig, LocalizerActor, DispatcherActor, TrackerActor, TrackerRequest, ActorSystem, ResultLoggerActor
 
 logcfg = { 'version': 1,
@@ -109,10 +108,6 @@ def test_msg_dispatcher_img_streamer():
 
     finally:
         system.shutdown()
-=======
-from olt.actor_tracker import (ImageBuffer, ActorConfig, LocalizerActor, DispatcherActor, 
-                               TrackerActor, TrackerRequest, ActorSystem, ResultLoggerActor)
->>>>>>> d5b1ff9 (Cleaning, fixing, adding tests)
 
 
 def test_msg_dispatcher():
