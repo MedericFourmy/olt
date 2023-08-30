@@ -39,6 +39,7 @@ dependencies:
   - glfw
   - librealsense
   - quaternion
+  - pytest
   - pip:
       - pybullet
       - distributed

@@ -1,15 +1,11 @@
-import cv2
 import numpy as np
 import json
-import time
 from PIL import Image
-
-import pytest
 
 from olt.tracker import Tracker
 from olt.localizer import Localizer
-from olt.utils import Kres2intrinsics, print_mem_usage
-from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
+from olt.utils import Kres2intrinsics
+from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, LocalizerConfig
 
 
 def test_obj_in_img():
@@ -48,7 +44,7 @@ def test_obj_in_img():
 
     poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
 
-    assert 'ycbv-obj_000006' in poses.keys()
+    assert 'obj_000006' in poses.keys()
     print("objects are detected")
 
     # rgb[:] = 42

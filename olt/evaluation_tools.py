@@ -104,16 +104,13 @@ def append_result(results, scene_id, obj_id, view_id, score, TCO, dt):
 
     results.append(pred)
 
-
-
-
 def run_bop_evaluation(filename, results_dir_name, evaluations_dir_name):
     myenv = os.environ.copy()
 
     BOP_TOOLKIT_DIR = Path(bop_toolkit_lib.__file__).parent.parent
     POSE_EVAL_SCRIPT_PATH = BOP_TOOLKIT_DIR / "scripts/eval_bop19_pose.py"
 
-    # 
+    # Put results in current directory
     root_dir = Path(os.getcwd())
     results_path = root_dir / results_dir_name
     eval_path = root_dir / evaluations_dir_name
@@ -133,47 +130,3 @@ def run_bop_evaluation(filename, results_dir_name, evaluations_dir_name):
     ]
     # subprocess.call(cmd, env=myenv, cwd=BOP_TOOLKIT_DIR.as_posix())
     subprocess.call(cmd, env=myenv, cwd=os.getcwd())
-
-
-# # Folder with the BOP datasets.
-# datasets_path = str(MEGAPOSE_DATA_DIR / 'bop_datasets')
-
-# # Folder with pose results to be evaluated.
-# results_path = str(MEGAPOSE_DATA_DIR / 'results')
-
-# # Folder for the calculated pose errors and performance scores.
-# eval_path = str(MEGAPOSE_DATA_DIR / 'bop_eval_outputs')
-
-
-# parser = argparse.ArgumentParser()
-# parser.add_argument('--renderer_type', default=p['renderer_type'])
-# parser.add_argument('--result_filenames',
-#                     default=','.join(p['result_filenames']),
-#                     help='Comma-separated names of files with results.')
-# parser.add_argument('--results_path', default=p['results_path'])
-# parser.add_argument('--eval_path', default=p['eval_path'])
-# parser.add_argument('--targets_filename', default=p['targets_filename'])
-# args = parser.parse_args()
-
-
-
-if __name__ == '__main__':
-    from bop_toolkit_lib import inout  # noqa
-
-    preds = [] 
-    scene_id = 1 
-    obj_id = 3
-    view_id = 0 
-    score = 0.6
-    TCO = np.eye(4) 
-    dt = 1.0
-
-    append_result(preds, scene_id, obj_id, view_id, score, TCO, dt)
-    view_id+=1
-    append_result(preds, scene_id, obj_id, view_id, score, TCO, dt)
-    view_id+=1
-    append_result(preds, scene_id, obj_id, view_id, score, TCO, dt)
-    view_id+=1
-
-    inout.save_bop_results('results_test.csv', preds)
-
