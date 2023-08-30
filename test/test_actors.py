@@ -1,9 +1,113 @@
 
 
+import logging
 import time
 
 import numpy as np
-from olt.actor_tracker import ImageBuffer, ActorConfig, LocalizerActor, DispatcherActor, TrackerActor, TrackerRequest, ActorSystem, ResultLoggerActor
+from olt.actor_tracker import ImageBuffer, ImageStreamerActor, ActorConfig, LocalizerActor, DispatcherActor, TrackerActor, TrackerRequest, ActorSystem, ResultLoggerActor
+
+logcfg = { 'version': 1,
+           'formatters': {
+               'normal': {
+                   'format': '%(levelname)-8s %(message)s'}},
+           'handlers': {
+               'h': {'class': 'logging.FileHandler',
+                     'filename': 'test.log',
+                     'formatter': 'normal',
+                     'level': logging.INFO}},
+           'loggers' : {
+               '': {'handlers': ['h'], 'level': logging.DEBUG}}
+         }
+
+
+from thespian.actors import Actor
+class CounterActor(Actor):
+    def __init__(self, *args, **kwargs):
+        self.count = 0
+        self.msg_types = set([TrackerRequest])
+        
+        super().__init__(*args, **kwargs)
+
+    def receiveMessage(self, message, sender): 
+        if isinstance(message, tuple(self.msg_types)):
+            self.count += 1
+        if isinstance(message, str) and message == "count":
+            self.send(sender, self.count)
+
+def test_kill_system():
+    system = ActorSystem('multiprocQueueBase', logDefs=logcfg)
+    system.shutdown()
+
+
+def test_img_streamer():
+    try:
+        system = ActorSystem('multiprocQueueBase', logDefs=logcfg)
+    
+        img_streamer = system.createActor(ImageStreamerActor)
+        counter = system.createActor(CounterActor)
+        
+        index_0 = system.ask(img_streamer, "index", 0.1)
+        print(index_0)
+
+        system.tell(img_streamer, ActorConfig({"counter": counter}))
+
+        system.tell(img_streamer, "start")
+
+        time.sleep(4.0)
+        system.tell(img_streamer, "stop")
+        index_1 = system.ask(img_streamer, "index", 0.1)
+        count = system.ask(counter, "count")
+        assert (index_1-index_0) == count
+
+    finally:
+        system.shutdown()
+
+
+    
+
+def test_msg_dispatcher_img_streamer():
+
+
+    try:
+        system = ActorSystem('multiprocQueueBase', logDefs=logcfg)
+        # system = ActorSystem()
+
+
+        img_streamer = system.createActor(ImageStreamerActor)
+        dispatcher = system.createActor(DispatcherActor)
+        image_buffer = system.createActor(ImageBuffer)
+        localizer = system.createActor(LocalizerActor)
+        tracker_1 = system.createActor(TrackerActor)
+        result_logger = system.createActor(ResultLoggerActor)
+
+        mydict = {"buffer": image_buffer,
+                "localizer": localizer,
+                "tracker": tracker_1,
+                "result_logger": result_logger,
+                "dispatcher": dispatcher}
+        cfg = ActorConfig(addressbook=mydict)
+
+        system.tell(dispatcher, cfg)
+        system.tell(localizer, cfg)
+
+
+        system.tell(img_streamer, ActorConfig({"dispatcher": dispatcher}))
+        system.tell(img_streamer, "start")
+
+        time.sleep(0.5)
+
+        system.tell(localizer, "poll")
+        # time.sleep(20.0)
+        
+
+        time.sleep(3.0)
+        while True:
+            res = system.ask(result_logger, "print")
+            print(res.keys())
+            time.sleep(0.5)
+
+    finally:
+        system.shutdown()
 
 
 def test_msg_dispatcher():

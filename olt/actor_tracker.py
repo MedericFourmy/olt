@@ -67,9 +67,46 @@ class TrackerRequest(object):
 
         return TrackerRequest(rgb)
 
+class ImageStreamerActor(Actor):
+    def __init__(self, *args, **kwargs):
+        self.active = False
+        self.index = 1
+        self.receivers = {}
+        self.start_time = time.time()
+        super().__init__(*args, **kwargs)
+
+    def receiveMessage(self, message, sender):
+        if isinstance(message, ActorConfig):
+            self.receivers.update(message.addressbook)
+        if isinstance(message, str) and message == "start":
+            self.active = True
+        if isinstance(message, str) and message == "stop":
+            self.active = False
+        if isinstance(message, str) and message in self.__dir__():
+            self.send(sender, self.__getattribute__(message))
+
+        if self.active:
+            self.wakeupAfter(timedelta(seconds=0.5))
+            try:
+                new_msg = TrackerRequest._get_sample_img_msg(self.index)
+            except FileNotFoundError as e:
+                self.active = False
+                logging.warn("I streamed the whole dataset of images and exit now")
+                self.send(self.myAddress, ActorExitRequest())
+                return
+            
+            new_msg.img_time = time.time() - self.start_time
+            for target, addr in self.receivers.items():
+                self.send(addr, new_msg)
+                logging.info(f"send image {self.index} to {target} at {new_msg.img_time}")
+            self.index += 1
+
+            
+
+
 class ImageBuffer(Actor):
     def __init__(self, *args, **kwargs):
-        self.capacity = 60
+        self.capacity = 120
         self.images = {} # image id to image
         self.image_id_deque = deque(maxlen=self.capacity)
         
@@ -100,16 +137,16 @@ class ImageBuffer(Actor):
     
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
-            logging.info("received an image to buffer")
+            logging.debug(f"received image to buffer")
             # save image to buffer
             if message.has_image() and message.has_id():
                 self.add_img(message.img, message.img_id)
-                self.send(sender, message)
+                # self.send(sender, message)
             if message.has_image() and not message.has_id():
                 new_id = self.get_id()
                 self.add_img(message.img, new_id)
                 message.img_id = new_id
-                self.send(sender, message)
+                # self.send(sender, message)
 
             # get image from buffer
             if message.has_id and not message.has_image():
@@ -118,8 +155,12 @@ class ImageBuffer(Actor):
                     new_msg.send_all_newer_images = False
 
                     if new_msg.img_id + 1 > self.image_id_deque[-1]: 
-                        # no newer images available
+                        logging.error(f"the requested image id {new_msg.img_id} is newer than all buffer images.")
                         return
+                    if new_msg.img_id < self.image_id_deque[0]:
+                        logging.warn(f"the requested image id {new_msg.img_id} is not in the buffer anymore.")
+                        return
+                    
                     id_list = list(self.image_id_deque)
                     start_id = id_list.index(new_msg.img_id + 1)
                     all_ids_to_send = id_list[start_id:]
@@ -151,9 +192,27 @@ class ResultLoggerActor(Actor):
         # self.latest_result = (-1, -1) # (img_id, cosy_base_id)
         self.latest_result = -1
         self.highest_cosy_base_id = -1
+        self.open_result_requests = {} # img_id to message waiting for that image_id
      
         super().__init__(*args, **kwargs)
 
+    def serve_message(self, img_id):
+        sender, message = self.open_result_requests[img_id] 
+        try:
+            for msg in self.store[message.img_id - 1]:
+                assert isinstance(msg, TrackerRequest)
+                if msg.cosy_base_id == message.cosy_base_id:
+                    message.poses_tracker = msg.poses_result
+                    self.send(sender, message)
+                    break
+            
+            # removing the served request
+            del self.open_result_requests[img_id] 
+
+
+        except KeyError as e:
+            logging.error(f"result {message.img_id - 1} not yet available for msg {message.img_id}.")
+            
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
             assert message.has_cosy_base_id()
@@ -166,6 +225,11 @@ class ResultLoggerActor(Actor):
                 else:
                     self.store[message.img_id].append(message)
 
+                if message.img_id in self.open_result_requests.keys():
+                    
+                    logging.error(f"Got message {message.img_id} that a message requested.")
+                    self.serve_message(message.img_id)
+
             # provide tracker results from previous image ids as estimate 
             elif message.has_id() and message.has_cosy_base_id():
                 try:
@@ -173,11 +237,12 @@ class ResultLoggerActor(Actor):
                         assert isinstance(msg, TrackerRequest)
                         if msg.cosy_base_id == message.cosy_base_id:
                             message.poses_tracker = msg.poses_result
-                            self.send(sender, message, 0.1)
+                            self.send(sender, message)
                             break
 
                 except KeyError as e:
-                    print("result not yet available.")
+                    logging.error(f"result {message.img_id - 1} not yet available for msg {message.img_id}.")
+                    self.open_result_requests[message.img_id - 1] = (sender, message)
 
         if isinstance(message, str) and message == "print":
             print(self.store.keys())
@@ -195,7 +260,6 @@ class DispatcherActor(Actor):
         self.localizer_free = True
         self.latest_result = None
         self.latest_result_id = -1
-
         self.latest_cosy_base_id = -1
              
         super().__init__(*args, **kwargs)
@@ -210,20 +274,20 @@ class DispatcherActor(Actor):
             return
 
         if isinstance(message, TrackerRequest):
+            logging.debug(f"Dispatcher received message with img_id {message.img_id}, cosy_poses {message.has_poses_cosy}, tracker_poses {message.has_poses_tracker}, and result_poses {message.has_poses_result}")
             if message.has_poses_result():
                 # send message to result logger
                 if self.latest_result_id < message.img_id:
-                    self.latest_result = copy.deepcopy(message)
+                    self.latest_result_id = message.img_id
+                    # self.latest_result = copy.deepcopy(message)
                 self.send(self.result_logger, message)
-
-
                 return
             if message.has_poses_tracker():
                 # send the message to the tracker for refinement
-                self.send(self.tracker, message)
+                self.send(self.tracker, (self.result_logger, message))
                 return
             if message.has_poses_cosy():
-                self.send(self.tracker, message)
+                self.send(self.tracker, (self.result_logger, message))
                 # make sure that following messages are based on this result
                 # get also all images following this' message id from the buffer
                 self.send(self.buffer, TrackerRequest(img_id=message.img_id, 
@@ -241,6 +305,8 @@ class DispatcherActor(Actor):
                 # trigger adding estimate from previous results
                 self.send(self.result_logger, message)
                 return
+            
+            logging.error(f"unhandled message: {message}")
 
 
 
@@ -310,6 +376,7 @@ class LocalizerActor(Actor):
             if message.has_image():
                 assert message.has_id()
                 if message.img_id > self.last_img_id:
+                    logging.debug(f"Starting prediction for img_id {message.img_id}.")
                     poses = self.localizer.predict(message.img, self.K, n_coarse=1, n_refiner=3)
                     self.last_img_id = message.img_id
                     message.poses_cosy = poses
@@ -357,6 +424,8 @@ class TrackerActor(Actor):
         super().__init__(*args, **kwargs)
 
     def receiveMessage(self, message, sender):
+        if isinstance(message, tuple):
+            sender, message = message
         if isinstance(message, TrackerRequest):
             if message.has_poses_cosy():
                 self.tracker.detected_bodies(message.poses_cosy)
@@ -365,31 +434,71 @@ class TrackerActor(Actor):
             if message.has_image():
                 self.tracker.set_image(message.img)
                 self.tracker.track()
-                message.poses_result = self.tracker.bodies
+                # message.poses_result = self.tracker.bodies
                 message.poses_result = {}
                 for name, body in self.tracker.bodies.items():
                     assert isinstance(body, Body)
                     message.poses_result[name] = body.world2body_pose
                 self.tracker.update_viewers()
+                logging.info(f"Tracking on image {message.img_id} complete.")
                 self.send(sender, message)
 
 
+logcfg = { 'version': 1,
+           'formatters': {
+               'normal': {
+                   'format': '%(levelname)-8s %(message)s'}},
+           'handlers': {
+               'h': {'class': 'logging.FileHandler',
+                     'filename': 'test.log',
+                     'formatter': 'normal',
+                     'level': logging.INFO}},
+           'loggers' : {
+               '': {'handlers': ['h'], 'level': logging.DEBUG}}
+         }
 
 
 if __name__ == "__main__":
 
-    system = ActorSystem('multiprocQueueBase')
-        
+    # try:
+    system = ActorSystem('multiprocTCPBase', logDefs=logcfg)
+    # system = ActorSystem()
 
 
+    img_streamer = system.createActor(ImageStreamerActor)
+    dispatcher = system.createActor(DispatcherActor)
+    image_buffer = system.createActor(ImageBuffer)
     localizer = system.createActor(LocalizerActor)
     tracker_1 = system.createActor(TrackerActor)
+    result_logger = system.createActor(ResultLoggerActor)
 
-    msg = TrackerRequest._get_sample_img_msg()
-    msg = system.ask(localizer, msg, 1)
-    res = system.ask(tracker_1, msg, 1)
+    mydict = {"buffer": image_buffer,
+            "localizer": localizer,
+            "tracker": tracker_1,
+            "result_logger": result_logger,
+            "dispatcher": dispatcher}
+    cfg = ActorConfig(addressbook=mydict)
 
-    print(res)
+    system.tell(dispatcher, cfg)
+    system.tell(localizer, cfg)
 
-    system.shutdown()
-    print("shutdown complete.")
+
+    system.tell(img_streamer, ActorConfig({"dispatcher": dispatcher}))
+    system.tell(img_streamer, "start")
+
+    time.sleep(0.5)
+
+    system.tell(localizer, "poll")
+        # time.sleep(20.0)
+        
+
+    #     time.sleep(3.0)
+    #     while True:
+    #         # res = system.ask(result_logger, "print")
+    #         # print(res.keys())
+    #         time.sleep(3.0)
+    # finally:
+    #     system.shutdown()
+
+    
+    #     print("shutdown complete.")
