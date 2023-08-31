@@ -1,7 +1,6 @@
 """
 
 Vocabulary
-- object id: id of an object in one of the datasets, e.g. obj_000010 = banana object for ycbv
 - body name: name of a specific instance of a object in pyicg
 
 Notations
@@ -9,7 +8,6 @@ Notations
 """
 
 
-import cv2
 import time
 import numpy as np
 from pathlib import Path
@@ -19,21 +17,8 @@ import pyicg
 
 
 
-from olt.utils import tq_to_SE3
+from olt.utils import tq_to_SE3, obj_name2id
 from olt.config import TrackerConfig
-
-
-
-def detection_id_conversion(det_id: str, ds_name: str):
-    if ds_name == 'ycbv':
-        # For ycbv+CosyPose, labels from detection are look like 'ycbv-obj_000010'
-        if 'ycbv-' in det_id:
-            return det_id.split('-')[1]
-        else:
-            assert det_id.startswith("obj_")
-            return det_id
-    else:
-        raise ValueError(f'Unknown dataset name {ds_name}')
 
 
 class Tracker:
@@ -51,7 +36,7 @@ class Tracker:
                  accepted_objs: Union[set[str],str],
                  cfg: TrackerConfig
                  ) -> None:
-        print('TrackerConfig:\n', cfg)
+        # print('TrackerConfig:\n', cfg)
         self.cfg = cfg
         self.tmp_dir = Path(self.cfg.tmp_dir_name)
         self.obj_model_dir = Path(obj_model_dir)
@@ -62,6 +47,8 @@ class Tracker:
 
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
+
+        self.active_tracks = []
 
     def init(self):
         # Check if paths exist
@@ -77,12 +64,9 @@ class Tracker:
         self.renderer_geometry = pyicg.RendererGeometry('renderer geometry')
 
         self.color_camera = pyicg.DummyColorCamera('cam_color')
-        # TODO: new attributes
-        trans_d_c = [0,0,0]
-        quat_d_c_xyzw = [0,0,0,1]
-        self.color_camera.color2depth_pose = tq_to_SE3(trans_d_c, quat_d_c_xyzw)
+        self.color_camera.color2depth_pose = np.eye(4)
+        self.color_camera.camera2world_pose = np.eye(4)  # assume 1 camera fixed and aligned with world frame
         self.color_camera.intrinsics = pyicg.Intrinsics(**self.intrinsics)
-        # self.color_camera.camera2world_pose = np.eye(4)  # assume camera is fixed and aligned with world frame
 
         # Viewers
         color_viewer = pyicg.NormalColorViewer(self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
@@ -148,6 +132,7 @@ class Tracker:
                 print('PROBLEM: less or more than one file were found')
         
         print('accepted_objs: ', accepted_objs)
+        # obj_name: 'obj_'
         bodies = {
             obj_name: pyicg.Body(
                 name=obj_name,
@@ -190,16 +175,15 @@ class Tracker:
         FOR NOW: assume unique objects and reinitialize there pose
         """
 
-
-        # Implementation 1: just update the current e
-        # stimates, 1 object per cat
-        for det_id, T_co in detections.items():
-            obj_id = detection_id_conversion(det_id, 'ycbv')
+        # Implementation 1: just update the current estimates, 1 object per cat
+        self.active_tracks = []
+        for obj_name, T_co in detections.items():
+            self.active_tracks.append(obj_name)
             if isinstance(T_co, pyicg.Body):
-                self.bodies[obj_id].body2world_pose = T_co.body2world_pose
+                self.bodies[obj_name].body2world_pose = T_co.body2world_pose
             elif isinstance(T_co, np.ndarray):
                 assert T_co.shape == (4,4)
-                self.bodies[obj_id].body2world_pose = T_co
+                self.bodies[obj_name].body2world_pose = T_co
             else:
                 raise ValueError(f"Expected homogenous transformation or pyicg bodies, but got {type(T_co)}")
 
@@ -250,4 +234,13 @@ class Tracker:
 
     def update_viewers(self):
         self.tracker.UpdateViewers(self.iteration)
+
+
+    def get_current_preds(self):
+        preds = {}
+        for obj_name in self.active_tracks:
+            preds[obj_name] = self.bodies[obj_name].body2world_pose
+
+        return preds
+
 

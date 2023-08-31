@@ -28,8 +28,5 @@ Killing the actors running in their processes is done by brute force (for now):
 
 TODO 
 ----
-- BOP output formatting
 - BOP eval toolkit script run
-
-
-
+- Fix Coypose bug when no detection
