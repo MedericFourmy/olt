@@ -72,6 +72,7 @@ class ImageStreamerActor(Actor):
         self.active = False
         self.index = 1
         self.receivers = {}
+        self.dt = 0.5
         self.start_time = time.time()
         super().__init__(*args, **kwargs)
 
@@ -82,11 +83,14 @@ class ImageStreamerActor(Actor):
             self.active = True
         if isinstance(message, str) and message == "stop":
             self.active = False
+        if isinstance(message, str) and "hz" in message: # "hz 30"
+            hz = float(message.strip("hz "))
+            self.dt = 1.0/hz
         if isinstance(message, str) and message in self.__dir__():
             self.send(sender, self.__getattribute__(message))
 
         if self.active:
-            self.wakeupAfter(timedelta(seconds=0.5))
+            self.wakeupAfter(timedelta(seconds=self.dt))
             try:
                 new_msg = TrackerRequest._get_sample_img_msg(self.index)
             except FileNotFoundError as e:
