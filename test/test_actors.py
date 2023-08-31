@@ -34,6 +34,57 @@ class CounterActor(Actor):
         if isinstance(message, str) and message == "count":
             self.send(sender, self.count)
 
+class ImageRecurseSendActor(Actor):
+    def __init__(self, *args, **kwargs):
+
+        self.child_actor = None
+
+        super().__init__(*args, **kwargs)
+
+    def receiveMessage(self, message, sender): 
+        if isinstance(message, TrackerRequest):
+            if message.cosy_base_id >= 20:
+                logging.warn(f"message.img_id {message.img_id}")
+                logging.warn(f"diffs {np.diff(np.array(message.img_time))}")
+                logging.warn(f"mean {np.mean(np.diff(np.array(message.img_time)))}")
+                logging.warn(f"std {np.std(np.diff(np.array(message.img_time)))}")
+                logging.warn(f"sum {np.sum(np.diff(np.array(message.img_time)))}")
+
+            else:
+                # message.img = None
+                if not isinstance(message.img_time, list):
+                    message.img_time = [time.time()]
+                else:
+                    message.img_time.append(time.time())
+                message.cosy_base_id = message.cosy_base_id + 1
+
+                if self.child_actor is None:
+                    self.child_actor = self.createActor(ImageRecurseSendActor)
+                self.send(self.child_actor, message)
+
+        
+
+
+def test_message_serialization_overhead():
+    system = ActorSystem('multiprocTCPBase', logDefs=logcfg)
+
+    img_streamer = system.createActor(ImageStreamerActor)
+    img_forward = system.createActor(ImageRecurseSendActor)
+
+    system.tell(img_streamer, ActorConfig({"img_forward": img_forward}))
+    system.tell(img_streamer, "hz 30")
+    system.tell(img_streamer, "start")
+
+    time.sleep(10.0)
+
+    system.tell(img_streamer, "stop")
+
+    system.shutdown()
+
+    
+
+
+
 def test_kill_system():
     system = ActorSystem('multiprocQueueBase', logDefs=logcfg)
     system.shutdown()
