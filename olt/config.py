@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from dataclasses import dataclass
+import logging
 
 DATASET_NAMES = ['ycbv', 'rotd']
 
@@ -35,3 +36,17 @@ class EvaluationBOPConfig:
     tracker_cfg: TrackerConfig = TrackerConfig()
     localizer_cfg: LocalizerConfig = LocalizerConfig()
     ds_name: str = 'ycbv'
+
+
+logcfg = { 'version': 1,
+           'formatters': {
+               'normal': {
+                   'format': '%(levelname)-8s %(message)s'}},
+           'handlers': {
+               'h': {'class': 'logging.FileHandler',
+                     'filename': 'test.log',
+                     'formatter': 'normal',
+                     'level': logging.INFO}},
+           'loggers' : {
+               '': {'handlers': ['h'], 'level': logging.DEBUG}}
+         }

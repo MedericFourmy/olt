@@ -1,4 +1,5 @@
 import copy
+import os
 import cv2
 from collections import deque
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ from datetime import timedelta
 from PIL import Image
 import logging
 
-from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
+from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig, logcfg
 from pyicg import Body
 
 
@@ -141,7 +142,7 @@ class ImageBuffer(Actor):
     
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
-            logging.debug(f"received image to buffer")
+            logging.info(f"received image to buffer")
             # save image to buffer
             if message.has_image() and message.has_id():
                 self.add_img(message.img, message.img_id)
@@ -159,7 +160,7 @@ class ImageBuffer(Actor):
                     new_msg.send_all_newer_images = False
 
                     if new_msg.img_id + 1 > self.image_id_deque[-1]: 
-                        logging.error(f"the requested image id {new_msg.img_id} is newer than all buffer images.")
+                        logging.error(f"the requested image id {new_msg.img_id + 1} is newer than all buffer images.")
                         return
                     if new_msg.img_id < self.image_id_deque[0]:
                         logging.warn(f"the requested image id {new_msg.img_id} is not in the buffer anymore.")
@@ -188,6 +189,12 @@ class ImageBuffer(Actor):
                 self.send(sender, new_msg)
             except IndexError as e:
                 pass
+        if isinstance(message, str) and message == "latest_image_id":
+            try:
+                highest_id = self.image_id_deque[-1]
+                self.send(sender, highest_id)
+            except IndexError as e:
+                self.send(sender, -1)
             
         
 class ResultLoggerActor(Actor):
@@ -202,6 +209,14 @@ class ResultLoggerActor(Actor):
 
     def serve_message(self, img_id):
         sender, message = self.open_result_requests[img_id] 
+        assert isinstance(message, TrackerRequest)
+
+        # serve other result requests without cosy id
+        if not message.has_cosy_base_id():
+            res = self.store[message.img_id][-1]
+            self.send(sender, res)
+
+
         try:
             for msg in self.store[message.img_id - 1]:
                 assert isinstance(msg, TrackerRequest)
@@ -219,7 +234,7 @@ class ResultLoggerActor(Actor):
             
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
-            assert message.has_cosy_base_id()
+            # assert message.has_cosy_base_id()
             if message.has_poses_result():
                 message.result_log_time = time.time()
                 self.latest_result = max([self.latest_result, message.img_id])
@@ -247,6 +262,16 @@ class ResultLoggerActor(Actor):
                 except KeyError as e:
                     logging.error(f"result {message.img_id - 1} not yet available for msg {message.img_id}.")
                     self.open_result_requests[message.img_id - 1] = (sender, message)
+            # provide result for any img_id
+            elif message.has_id() and not message.has_cosy_base_id():
+                try: 
+                    res = self.store[message.img_id][-1]
+                    self.send(sender, res)
+                except KeyError as e:
+                    logging.error(f"result {message.img_id} not yet available. Will answer ASAP")
+                    self.open_result_requests[message.img_id] = (sender, message)
+                
+                
 
         if isinstance(message, str) and message == "print":
             print(self.store.keys())
@@ -367,6 +392,18 @@ class LocalizerActor(Actor):
      
         super().__init__(*args, **kwargs)
 
+    def predict(self, img):
+        try:
+            poses = self.localizer.predict(img, self.K, n_coarse=1, n_refiner=3)
+        except AttributeError as e:
+            poses = {}
+                
+        return poses
+    
+    def exit(self):
+        logging.warn("killing localizer from inside.")
+        os.kill(os.getpid(), 9)
+
     def receiveMessage(self, message, sender):
         if isinstance(message, ActorConfig):
             self.buffer = message.addressbook["buffer"]
@@ -378,10 +415,18 @@ class LocalizerActor(Actor):
         if isinstance(message, TrackerRequest):
             
             if message.has_image():
+                if not message.has_id():
+                    # do prediction on image and return result, e.g. for warmup
+                    logging.info("performing (warmup) prediction.")
+                    poses = self.predict(message.img)
+                    # message.poses_cosy = poses
+                    self.send(sender ,poses)
+                    return
+
                 assert message.has_id()
                 if message.img_id > self.last_img_id:
-                    logging.debug(f"Starting prediction for img_id {message.img_id}.")
-                    poses = self.localizer.predict(message.img, self.K, n_coarse=1, n_refiner=3)
+                    logging.info(f"Starting prediction for img_id {message.img_id}.")
+                    poses = self.predict(message.img)
                     self.last_img_id = message.img_id
                     message.poses_cosy = poses
                     message.cosy_base_id = message.img_id
@@ -389,13 +434,21 @@ class LocalizerActor(Actor):
                 else:
                     # we polled the same image twice. In the test cases, where
                     # images come slow, we need to poll later or we are deadlocked.
-                    self.wakeupAfter(timedelta(seconds=0.9), payload="poll")
+                    logging.info(f"we polled image {message.img_id} before. Trying again later.")
+                    self.wakeupAfter(timedelta(seconds=0.1), payload="poll")
                     return
                 
                 if self.POLLING:
+                    logging.info(f"Polling new img after finishing a prediction.")
                     self.send(self.buffer, "latest_image")
         if isinstance(message, str) and message == "poll":
+            logging.info(f"Polling new img from outside trigger.")
+
             self.send(self.buffer, "latest_image")
+
+        # if isinstance(message, ActorExitRequest) or isinstance(message, str) and message == "exit":
+        #     self.send(sender, os.getpid())
+            # self.exit()
 
 class TrackerActor(Actor):
     def __init__(self, *args, **kwargs):
@@ -431,6 +484,7 @@ class TrackerActor(Actor):
         if isinstance(message, tuple):
             sender, message = message
         if isinstance(message, TrackerRequest):
+            logging.info(f"will perform tracking on image {message.img_id}.")
             if message.has_poses_cosy():
                 self.tracker.detected_bodies(message.poses_cosy)
             elif message.has_poses_tracker():
@@ -443,26 +497,15 @@ class TrackerActor(Actor):
                 self.tracker.track()
                 # message.poses_result = self.tracker.bodies
                 message.poses_result = {}
-                for name, body in self.tracker.bodies.items():
-                    assert isinstance(body, Body)
-                    message.poses_result[name] = body.world2body_pose
-                self.tracker.update_viewers()
+                for name, body_trans in self.tracker.get_current_preds().items():
+                    assert body_trans.shape == (4,4)
+                    # assert isinstance(body, Body)
+                    message.poses_result[name] = body_trans
+                # self.tracker.update_viewers()
                 logging.info(f"Tracking on image {message.img_id} complete.")
                 self.send(sender, message)
 
 
-logcfg = { 'version': 1,
-           'formatters': {
-               'normal': {
-                   'format': '%(levelname)-8s %(message)s'}},
-           'handlers': {
-               'h': {'class': 'logging.FileHandler',
-                     'filename': 'test.log',
-                     'formatter': 'normal',
-                     'level': logging.INFO}},
-           'loggers' : {
-               '': {'handlers': ['h'], 'level': logging.DEBUG}}
-         }
 
 
 if __name__ == "__main__":
