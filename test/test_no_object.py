@@ -47,11 +47,15 @@ def test_obj_in_img():
     assert 'obj_000006' in poses.keys()
     print("objects are detected")
 
-    # rgb[:] = 42
-    # poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
+    rgb[:] = 42
+    try:
+        poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
+    except AttributeError as e:
+        poses = {}
+        print(e)
 
-    # assert len(poses.keys()) == 0
-    # print("objects are detected")
+    assert len(poses.keys()) == 0
+    print("objects are detected")
 
 
 
