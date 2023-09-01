@@ -233,8 +233,10 @@ class Tracker:
 
 
     def update_viewers(self):
+        t = time.time()
         self.tracker.UpdateViewers(self.iteration)
-
+        dt = time.time() - t
+        return dt
 
     def get_current_preds(self):
         preds = {}
