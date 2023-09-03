@@ -165,12 +165,12 @@ class Tracker:
         """
         detections: list of object id,pose pairs coming from a pose estimator like happy pose
         Multiple objects of the sane
-        [
-            (obj_000010, pose1),
-            (obj_000016, pose2),
-            (obj_000010, pose3),
+        {
+            'obj_000010': pose1,
+            'obj_000016': pose2,
+            'obj_000010': pose3,
             ...
-        ]
+        }
 
         FOR NOW: assume unique objects and reinitialize there pose
         """

@@ -47,7 +47,7 @@ def Kres2intrinsics(K, width, height):
 Object ids/name/label conversions
 * object id: id of an object in one of the datasets, e.g. 10 = banana object for ycbv
 * object name: str with format obj_{obj_id:06}
-* object ;label: str with format {ds_name}-obj_{obj_id:06} returned by cosypose
+* object label: str with format {ds_name}-obj_{obj_id:06} returned by cosypose
 """
 
 
