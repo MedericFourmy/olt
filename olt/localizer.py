@@ -31,11 +31,16 @@ class Localizer:
 
         # labels returned by cosypose are the same as the "local_data/urdfs/ycbv" ones
         # -> obj_000010 == banana
-        predictions, _ = self.pose_estimator.run_inference_pipeline(observation,
-                                                                    run_detector=True,
-                                                                    n_coarse_iterations=n_coarse, 
-                                                                    n_refiner_iterations=n_refiner,
-                                                                    detection_th=self.cfg.detector_threshold)
+        # Exception handling: if no object detected in the image, cosypose currently throws an AttributeError error
+        try:
+            predictions, _ = self.pose_estimator.run_inference_pipeline(observation,
+                                                                        run_detector=True,
+                                                                        n_coarse_iterations=n_coarse, 
+                                                                        n_refiner_iterations=n_refiner,
+                                                                        detection_th=self.cfg.detector_threshold)
+        except AttributeError as e:
+            poses = {}
+
         # Send all poses to cpu to be able to process them
         poses = predictions.poses.cpu()
 

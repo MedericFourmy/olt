@@ -424,12 +424,7 @@ class LocalizerActor(Actor):
         super().__init__(*args, **kwargs)
 
     def predict(self, img):
-        try:
-            poses = self.localizer.predict(img, self.K, n_coarse=1, n_refiner=3)
-        except AttributeError as e:
-            poses = {}
-                
-        return poses
+        return self.localizer.predict(img, self.K, n_coarse=1, n_refiner=3)
     
     def exit(self):
         logging.warn("killing localizer from inside.")
