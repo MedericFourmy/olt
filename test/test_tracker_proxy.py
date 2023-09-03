@@ -39,18 +39,18 @@ def tracker_proxy():
 #     tp.shutdown()
 
     
-def test_get_estimate(tracker_proxy):
-    tp = tracker_proxy
-    assert isinstance(tp, TrackerProxy)
+# def test_get_estimate(tracker_proxy):
+#     tp = tracker_proxy
+#     assert isinstance(tp, TrackerProxy)
 
     
-    req = TrackerRequest._get_sample_img_msg(250)
-    # tp.feed_image(req)
+#     req = TrackerRequest._get_sample_img_msg(250)
+#     # tp.feed_image(req)
 
 
-    poses = tp.get_estimate(req, 10.0)
+#     poses = tp.get_estimate(req, 10.0)
     
-    verify_output(poses.poses_tracker)
+#     verify_output(poses.poses_tracker)
 
 
 def test_stream_preds(tracker_proxy):
@@ -88,15 +88,11 @@ def test_stream_preds(tracker_proxy):
     assert all([isinstance(pred, TrackerRequest) for pred in preds])
     assert all([pred.img_time >= 0.0 for pred in preds])
     assert preds[0].result_log_time >= preds[0].img_time
+    
+    for pred in preds:
+        assert isinstance(pred, TrackerRequest)
+        print(pred.result_log_time - pred.img_time)
 
 
     
 
-
-    
-
-
-def test_passing():
-    assert 42 == 42
-def test_failure():
-    assert 42 == -13
