@@ -100,10 +100,10 @@ class ImageStreamerActor(Actor):
                 self.send(self.myAddress, ActorExitRequest())
                 return
             
-            new_msg.img_time = time.time() - self.start_time
+            new_msg.img_time = time.time()
             for target, addr in self.receivers.items():
-                self.send(addr, new_msg)
                 logging.info(f"send image {self.index} to {target} at {new_msg.img_time}")
+                self.send(addr, new_msg)
             self.index += 1
 
             
@@ -145,11 +145,11 @@ class ImageBuffer(Actor):
             logging.info(f"received image to buffer")
             # save image to buffer
             if message.has_image() and message.has_id():
-                self.add_img(message.img, message.img_id)
+                self.add_img(message, message.img_id)
                 # self.send(sender, message)
             if message.has_image() and not message.has_id():
                 new_id = self.get_id()
-                self.add_img(message.img, new_id)
+                self.add_img(message, new_id)
                 message.img_id = new_id
                 # self.send(sender, message)
 
@@ -170,12 +170,14 @@ class ImageBuffer(Actor):
                     start_id = id_list.index(new_msg.img_id + 1)
                     all_ids_to_send = id_list[start_id:]
                     for _id in all_ids_to_send:
-                        new_msg = copy.deepcopy(new_msg)
-                        new_msg.img_id = _id
-                        new_msg.img = self.get_image(_id)
+                        # new_msg = copy.deepcopy(new_msg)
+                        # new_msg.img_id = _id
+                        new_msg = self.get_image(_id)
+                        assert isinstance(new_msg, TrackerRequest)
+                        new_msg.cosy_base_id = message.cosy_base_id
                         self.send(sender, new_msg)
                 else:
-                    message.img = self.get_image(message.img_id)
+                    message = self.get_image(message.img_id)
                     self.send(sender, message)
 
         if isinstance(message, str) and message == "stats":
@@ -185,13 +187,15 @@ class ImageBuffer(Actor):
         if isinstance(message, str) and message == "latest_image":
             try:
                 highest_id = self.image_id_deque[-1]
-                new_msg = TrackerRequest(self.images[highest_id], highest_id)
+                new_msg = self.get_image(highest_id)
+                # new_msg = TrackerRequest(self.images[highest_id], highest_id)
                 self.send(sender, new_msg)
             except IndexError as e:
                 pass
         if isinstance(message, str) and message == "latest_image_id":
             try:
                 highest_id = self.image_id_deque[-1]
+                assert isinstance(highest_id, int)
                 self.send(sender, highest_id)
             except IndexError as e:
                 self.send(sender, -1)
@@ -202,41 +206,51 @@ class ResultLoggerActor(Actor):
         self.store = {}
         # self.latest_result = (-1, -1) # (img_id, cosy_base_id)
         self.latest_result = -1
+        self.earliest_result = 10000
         self.highest_cosy_base_id = -1
         self.open_result_requests = {} # img_id to message waiting for that image_id
      
         super().__init__(*args, **kwargs)
 
     def serve_message(self, img_id):
-        sender, message = self.open_result_requests[img_id] 
-        assert isinstance(message, TrackerRequest)
+        for sender, message in self.open_result_requests[img_id]: 
+            assert isinstance(message, TrackerRequest)
 
-        # serve other result requests without cosy id
-        if not message.has_cosy_base_id():
-            res = self.store[message.img_id][-1]
-            self.send(sender, res)
+            # serve other result requests without cosy id
+            if not message.has_cosy_base_id():
+                res = self.store[message.img_id][-1]
+                self.send(sender, res)
 
-
-        try:
-            for msg in self.store[message.img_id - 1]:
-                assert isinstance(msg, TrackerRequest)
-                if msg.cosy_base_id == message.cosy_base_id:
-                    message.poses_tracker = msg.poses_result
-                    self.send(sender, message)
-                    break
+            if message.has_cosy_base_id():
+                try:
+                    for msg in self.store[img_id]:
+                        assert isinstance(msg, TrackerRequest)
+                        if msg.cosy_base_id == message.cosy_base_id:
+                            message.poses_tracker = msg.poses_result
+                            self.send(sender, message)
+                            break
+                
+                except KeyError as e:
+                    assert False
+                # logging.error(f"result {message.img_id - 1} not yet available for msg {message.img_id}.")
             
-            # removing the served request
-            del self.open_result_requests[img_id] 
+        # removing the served request
+        logging.info(f"Served all requests for {message.img_id}.")
+        del self.open_result_requests[img_id] 
 
-
-        except KeyError as e:
-            logging.error(f"result {message.img_id - 1} not yet available for msg {message.img_id}.")
-            
+    def add_result_request(self, img_id, sender, message):
+        sender_msg_tuple = (sender, message)
+        if img_id not in self.open_result_requests.keys():
+            self.open_result_requests[img_id] = [sender_msg_tuple]
+        else:
+            self.open_result_requests[img_id].append(sender_msg_tuple)
+    
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
             # assert message.has_cosy_base_id()
             if message.has_poses_result():
                 message.result_log_time = time.time()
+                self.earliest_result = min([self.earliest_result, message.img_id])
                 self.latest_result = max([self.latest_result, message.img_id])
                 self.highest_cosy_base_id = max([self.highest_cosy_base_id, message.cosy_base_id])
                 if message.img_id not in self.store.keys():
@@ -261,16 +275,30 @@ class ResultLoggerActor(Actor):
 
                 except KeyError as e:
                     logging.error(f"result {message.img_id - 1} not yet available for msg {message.img_id}.")
-                    self.open_result_requests[message.img_id - 1] = (sender, message)
+                    # self.open_result_requests[message.img_id - 1] = (sender, message)
+                    self.add_result_request(message.img_id - 1, sender, message)
             # provide result for any img_id
             elif message.has_id() and not message.has_cosy_base_id():
+                
+                try:
+                    if self.earliest_result > message.img_id:
+                        logging.error(f"result {message.img_id} not available. Smaller than all results. provide earliest result instead.")
+                        self.send(sender, self.store[self.earliest_result][-1])
+                        return
+                except KeyError as e:
+                    logging.error(f"result {message.img_id} not available. No results available. provide empty result instead.")
+                    self.send(sender, TrackerRequest(img_id=message.img_id))
+                    return
                 try: 
+                    
                     res = self.store[message.img_id][-1]
                     self.send(sender, res)
+                    return
                 except KeyError as e:
                     logging.error(f"result {message.img_id} not yet available. Will answer ASAP")
-                    self.open_result_requests[message.img_id] = (sender, message)
-                
+                    # self.open_result_requests[message.img_id] = (sender, message)
+                    self.add_result_request(message.img_id, sender, message)
+                    return
                 
 
         if isinstance(message, str) and message == "print":
@@ -309,19 +337,21 @@ class DispatcherActor(Actor):
                 if self.latest_result_id < message.img_id:
                     self.latest_result_id = message.img_id
                     # self.latest_result = copy.deepcopy(message)
+                raise ValueError(f"The dispatcher should not get these messages: {message}")
                 self.send(self.result_logger, message)
                 return
             if message.has_poses_tracker():
                 # send the message to the tracker for refinement
+                raise ValueError(f"The dispatcher should not get these messages: {message}")
                 self.send(self.tracker, (self.result_logger, message))
                 return
             if message.has_poses_cosy():
                 self.send(self.tracker, (self.result_logger, message))
                 # make sure that following messages are based on this result
                 # get also all images following this' message id from the buffer
-                self.send(self.buffer, TrackerRequest(img_id=message.img_id, 
-                                                      send_all_newer_images=True, 
-                                                      cosy_base_id=message.cosy_base_id))
+                # self.send(self.buffer, TrackerRequest(img_id=message.img_id, 
+                #                                       send_all_newer_images=True, 
+                #                                       cosy_base_id=message.cosy_base_id))
                 self.latest_cosy_base_id = max([message.cosy_base_id, self.latest_cosy_base_id])
                 return
 
@@ -332,6 +362,7 @@ class DispatcherActor(Actor):
             
             if message.has_image() and message.has_id() and message.has_cosy_base_id():
                 # trigger adding estimate from previous results
+                raise ValueError(f"The dispatcher should not get these messages: {message}")
                 self.send(self.result_logger, message)
                 return
             
@@ -456,6 +487,9 @@ class TrackerActor(Actor):
         from olt.tracker import Tracker
         from olt.utils import Kres2intrinsics, print_mem_usage
 
+        self.STRIP_IMAGE = True
+        self.POLLING = True
+
         DS_NAME = 'ycbv'
         SCENE_ID = 48
         VIEW_ID = 1
@@ -478,13 +512,29 @@ class TrackerActor(Actor):
         tcfg.viewer_save = True
         self.tracker = Tracker(intrinsics, OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg)
         self.tracker.init()
+
+
+        self.cosy_base_id = -1
+        self.last_img_id = -1
+
         super().__init__(*args, **kwargs)
 
     def receiveMessage(self, message, sender):
+        if isinstance(message, ActorConfig):
+            self.image_buffer = message.addressbook["buffer"]
+            self.result_logger = message.addressbook["result_logger"]
         if isinstance(message, tuple):
             sender, message = message
         if isinstance(message, TrackerRequest):
             logging.info(f"will perform tracking on image {message.img_id}.")
+            if message.has_cosy_base_id():
+                # tracker is on new track of images
+                logging.info(f"Tracker is on cosy_base_id track {message.cosy_base_id}.")
+                self.cosy_base_id = message.cosy_base_id
+                assert message.img_id >= message.cosy_base_id
+            elif self.last_img_id+1 != message.img_id:
+                logging.info(f"Tracker ignores image {message.img_id}, because it is on another track.")
+                return
             if message.has_poses_cosy():
                 self.tracker.detected_bodies(message.poses_cosy)
             elif message.has_poses_tracker():
@@ -492,9 +542,13 @@ class TrackerActor(Actor):
                 # if images in order, the bodies need no update
                 # update only bodies that are avialable
                 self.tracker.detected_bodies(message.poses_tracker)
+            if not message.has_poses_cosy() and not message.has_poses_tracker():
+                # the message must be consecutive!
+                assert message.img_id == self.last_img_id + 1
             if message.has_image():
                 self.tracker.set_image(message.img)
                 self.tracker.track()
+                self.last_img_id = message.img_id
                 # message.poses_result = self.tracker.bodies
                 message.poses_result = {}
                 for name, body_trans in self.tracker.get_current_preds().items():
@@ -503,7 +557,42 @@ class TrackerActor(Actor):
                     message.poses_result[name] = body_trans
                 # self.tracker.update_viewers()
                 logging.info(f"Tracking on image {message.img_id} complete.")
-                self.send(sender, message)
+                if self.STRIP_IMAGE:
+                    message.img = None
+                self.send(self.result_logger, message)
+
+                if self.POLLING:
+                    logging.info(f"Tracker is polling for img {message.img_id+1} on cosy_base_id track {self.cosy_base_id}.")
+                    self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+1))
+
+            # logging.warn(f"unhandled message in tracker: {message}")
+
+    # def receiveMessage(self, message, sender):
+    #     if isinstance(message, tuple):
+    #         sender, message = message
+    #     if isinstance(message, TrackerRequest):
+    #         logging.info(f"will perform tracking on image {message.img_id}.")
+    #         if message.has_poses_cosy():
+    #             self.tracker.detected_bodies(message.poses_cosy)
+    #         elif message.has_poses_tracker():
+    #             # message.poses_tracker contains poses from the prev time
+    #             # if images in order, the bodies need no update
+    #             # update only bodies that are avialable
+    #             self.tracker.detected_bodies(message.poses_tracker)
+    #         if message.has_image():
+    #             self.tracker.set_image(message.img)
+    #             self.tracker.track()
+    #             # message.poses_result = self.tracker.bodies
+    #             message.poses_result = {}
+    #             for name, body_trans in self.tracker.get_current_preds().items():
+    #                 assert body_trans.shape == (4,4)
+    #                 # assert isinstance(body, Body)
+    #                 message.poses_result[name] = body_trans
+    #             # self.tracker.update_viewers()
+    #             logging.info(f"Tracking on image {message.img_id} complete.")
+    #             if self.STRIP_IMAGE:
+    #                 message.img = None
+    #             self.send(sender, message)
 
 
 

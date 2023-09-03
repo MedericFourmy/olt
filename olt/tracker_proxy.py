@@ -1,6 +1,7 @@
 import os
 import subprocess
 import time
+import logging
 
 from thespian.actors import ActorExitRequest
 
@@ -30,8 +31,9 @@ class TrackerProxy(object):
 
         self.system.tell(self.dispatcher, cfg)
         self.system.tell(self.localizer, cfg)
+        self.system.tell(self.tracker_1, cfg)
 
-        self.system.tell(self.img_streamer, ActorConfig({"dispatcher": self.dispatcher}))
+        self.system.tell(self.img_streamer, ActorConfig({"buffer": self.image_buffer}))
 
         
     def warmup_localizer(self):
@@ -68,16 +70,29 @@ class TrackerProxy(object):
         return img_id
 
 
-    def get_estimate(self, img: (np.ndarray, TrackerRequest), timeout):
+    def get_estimate(self, img: (np.ndarray, TrackerRequest) = None, timeout: float = 10.0, min_id: int = None):
         # self.feed_image(img)
+        if img is None:
+            img = TrackerRequest()
+            img.img_id = self.system.ask(self.image_buffer, "latest_image_id", 0.2)
+            assert isinstance(img.img_id, int) 
+        elif isinstance(img, TrackerRequest):
+            img.img_id = self.feed_image(img)
+        
+        if isinstance(min_id, TrackerRequest):
+            print('Halt...')
 
-        assert isinstance(img, TrackerRequest)
-        img.img_id = self.feed_image(img)
+
+        if min_id is not None:
+            img.img_id = max(img.img_id, min_id)
+        
         img.img = None
+        logging.info(f"asking result for img_id {img.img_id}.")
         # img.img_id = self.system.ask(self.image_buffer, "latest_image_id", 0.2)
-        result = self.system.ask(self.result_logger, img, 10.0)
+        result = self.system.ask(self.result_logger, img, timeout)
         # result = self.system.listen(timeout=timeout)
-
+        if result is None:
+            print('Halt...')
         return result
 
 
