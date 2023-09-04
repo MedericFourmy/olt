@@ -50,6 +50,8 @@ class Tracker:
 
         self.active_tracks = []
 
+        self.image_set = False
+
     def init(self):
         # Check if paths exist
         if not self.tmp_dir.exists(): self.tmp_dir.mkdir(parents=True)
@@ -201,8 +203,10 @@ class Tracker:
         ok = self.tracker.UpdateCameras(True) 
         if not ok:
             raise ValueError('Something is wrong with the provided images')
+        self.image_set = True
 
     def track(self):
+        assert self.image_set, "No image was set yet! Call tracker.set_image(img)"
         if self.iteration == 0:
             print('StartModalities!')
             self.tracker.StartModalities(self.iteration)
