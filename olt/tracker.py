@@ -24,18 +24,28 @@ from olt.config import TrackerConfig
 class Tracker:
     """
     params:
-    - intrinsics: camera intrinsics as dict with keys: fu, fv, ppu, ppv, width, height
     - obj_model_dir: path to directory containing <model_name>.obj files
                      !! BOP datasets contain .ply objects, not .obj, we need to find them in another folder
     - tmp_dir: directory where cached computations are stored (e.g. RegionModel files)
     - accepted_objs: determines which object to load ('all' str or list of <model_name> str)
+    - rgb_intrinsics: rgb camera intrinsics as dict with keys: fu, fv, ppu, ppv, width, height
+    - depth_intrinsics: depth camera rgb_intrinsics as dict with keys: fu, fv, ppu, ppv, width, height
     """
     def __init__(self, 
-                 intrinsics: dict,
                  obj_model_dir: Union[str,Path],
                  accepted_objs: Union[set[str],str],
-                 cfg: TrackerConfig
+                 cfg: TrackerConfig,
+                 rgb_intrinsics: dict,
+                 depth_intrinsics: Union[dict,None] = None,
+                 color2depth_pose: Union[np.ndarray,None] = None,
                  ) -> None:
+        
+        if cfg.use_depth:
+            assert depth_intrinsics is not None
+
+        if cfg.measure_occlusions:
+            assert cfg.use_depth
+
         # print('TrackerConfig:\n', cfg)
         self.cfg = cfg
         self.tmp_dir = Path(self.cfg.tmp_dir_name)
@@ -43,7 +53,9 @@ class Tracker:
         self.accepted_objs = accepted_objs
 
         # Camera parameters
-        self.intrinsics = intrinsics
+        self.rgb_intrinsics = rgb_intrinsics
+        self.depth_intrinsics = depth_intrinsics
+        self.color2depth_pose = color2depth_pose
 
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
@@ -68,7 +80,13 @@ class Tracker:
         self.color_camera = pyicg.DummyColorCamera('cam_color')
         self.color_camera.color2depth_pose = np.eye(4)
         self.color_camera.camera2world_pose = np.eye(4)  # assume 1 camera fixed and aligned with world frame
-        self.color_camera.intrinsics = pyicg.Intrinsics(**self.intrinsics)
+        self.color_camera.intrinsics = pyicg.Intrinsics(**self.rgb_intrinsics)
+
+        if self.cfg.use_depth:
+            self.depth_camera = pyicg.DummyDepthCamera('cam_depth')
+            self.depth_camera.color2depth_pose = self.color2depth_pose
+            self.depth_camera.camera2world_pose = np.eye(4)  # assume 1 camera fixed and aligned with world frame
+            self.depth_camera.intrinsics = pyicg.Intrinsics(**self.depth_intrinsics)
 
         # Viewers
         color_viewer = pyicg.NormalColorViewer(self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
@@ -86,13 +104,25 @@ class Tracker:
 
         self.region_models = {}
         self.region_modalities = {} 
+        self.depth_models = {}
+        self.depth_modalities = {} 
         self.optimizers = {}
         for bname, body in self.bodies.items():
             region_model_path = self.tmp_dir / (bname + '_region_model.bin')
             self.region_models[bname] = pyicg.RegionModel(bname + '_region_model', body, region_model_path.as_posix())
+            if self.cfg.use_depth:
+                depth_model_path = self.tmp_dir / (bname + '_depth_model.bin')
+                self.depth_models[bname] = pyicg.DepthModel(bname + '_depth_model', body, depth_model_path.as_posix())
 
             # Q: Possible to create on the fly?
             self.region_modalities[bname] = pyicg.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])
+            if self.cfg.use_depth:
+                self.depth_modalities[bname] = pyicg.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
+
+                # Detect occlusion using measured depth and use it to improve estimates
+                if self.cfg.measure_occlusions:
+                    self.region_modalities[bname].MeasureOcclusions(self.depth_camera)
+                    self.depth_modalities[bname].MeasureOcclusions()
 
             # TODO: Add only the tracked body to the viewer?
             self.renderer_geometry.AddBody(body)
@@ -102,6 +132,9 @@ class Tracker:
 
             # Modalities
             self.optimizers[bname].AddModality(self.region_modalities[bname])
+            if self.cfg.use_depth:
+                self.optimizers[bname].AddModality(self.depth_modalities[bname])
+
             self.tracker.AddOptimizer(self.optimizers[bname])
 
 
@@ -197,8 +230,11 @@ class Tracker:
         """
         raise NotImplementedError('update_K')
 
-    def set_image(self, img: np.array):
-        self.color_camera.image = img
+    def set_image(self, rgb: np.array, depth: Union[np.array,None] = None):
+        self.color_camera.image = rgb
+        if self.cfg.use_depth:
+            self.depth_camera.image = depth
+
         # verifying the images have been properly setup
         ok = self.tracker.UpdateCameras(True) 
         if not ok:
@@ -219,11 +255,12 @@ class Tracker:
 
         return dt
 
-    def update_intrinsics(self, intrinsics):
-        self.intrinsics = intrinsics
+    def update_intrinsics(self, rgb_intrinsics):
+        raise NotImplementedError('update_intrinsics not implementable with current ICG version')
+        self.rgb_intrinsics = rgb_intrinsics
 
         # camera
-        self.color_camera.intrinsics = pyicg.Intrinsics(**intrinsics)
+        self.color_camera.rgb_intrinsics = pyicg.Intrinsics(**rgb_intrinsics)
 
         # modalities
         for rm in self.region_modalities.values:
