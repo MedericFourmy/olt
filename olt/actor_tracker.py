@@ -329,6 +329,9 @@ class ResultLoggerActor(Actor):
                     self.add_result_request(message.img_id, sender, message)
                     return
                 
+        
+        if isinstance(message, str) and message == "latest_estimate":
+            self.send(sender, self.store[self.latest_result][-1])
 
         if isinstance(message, str) and message == "print":
             print(self.store.keys())
@@ -538,7 +541,9 @@ class TrackerActor(Actor):
         tcfg.n_corr_iterations
         tcfg.viewer_display = False
         tcfg.viewer_save = True
-        self.tracker = Tracker(intrinsics, OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg)
+        # self.tracker = Tracker(intrinsics, OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg)
+        self.tracker = Tracker(OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg, rgb_intrinsics=intrinsics)
+
         self.tracker.init()
 
 
