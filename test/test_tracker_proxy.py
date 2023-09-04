@@ -65,19 +65,22 @@ def test_stream_preds(tracker_proxy):
 
     preds = []
     running = True
-    t0 = time.time()
     current_img_id = -1
     while running:
         assert isinstance(current_img_id, int)
         t = time.time()
         pred = tp.get_estimate(timeout=30.0, min_id=current_img_id+1)
-        print('Pred took ', time.time() - t)
+        t1 = time.time()
+        logger.info(f'Pred took {t1 - t}')
         if pred is None:
             pytest.fail("the pred should not be None")
         assert isinstance(pred, TrackerRequest)
+        logger.info(f"Time from image capture to result: {pred.result_log_time - pred.img_time}")
+        logger.info(f"Time from image capture to output: {t1 - pred.img_time}")
+
         current_img_id = pred.img_id
         preds.append(pred)
-        if len(preds) > 5:
+        if len(preds) > 20:
             break
         # if time.time() - t0 > 10.0:
         #     break
@@ -112,7 +115,6 @@ def test_get_estimate_performance(benchmark, tracker_proxy):
         time.sleep(0.5)
         
     pred = benchmark.pedantic(tp.get_estimate, setup=setup, rounds=20)
-    print("hello")
 
     # preds.append(pred)
     assert isinstance(pred, TrackerRequest)
@@ -123,6 +125,28 @@ def test_get_estimate_performance(benchmark, tracker_proxy):
     logger.info(f"Time from image capture to output: {time.time() - pred.img_time}")
 
     tp._stream_imgs(False)
+
+
+def test_get_latest_result(benchmark, tracker_proxy):
+    tp = tracker_proxy
+    assert isinstance(tp, TrackerProxy)
+
+    tp._stream_imgs(True)
+
+    time.sleep(5.0)
+
+    def setup():
+        logger.info("setup")
+        time.sleep(0.5)
+        
+    pred = benchmark.pedantic(tp.get_latest_available_estimate, setup=setup, rounds=20)
+
+    assert isinstance(pred, TrackerRequest)
+    verify_output(pred.poses_result)
+
+    tp._stream_imgs(False)
+
+
 
 
 def test_logging():
