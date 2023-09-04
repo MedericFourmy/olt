@@ -127,7 +127,7 @@ class ImageBuffer(Actor):
 
     def get_image(self, img_id):
         if img_id not in self.images.keys():
-            return None
+            raise IndexError(f"image {img_id} is not in buffer.")
         return self.images[img_id]
     
     def get_id(self):
