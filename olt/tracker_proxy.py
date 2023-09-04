@@ -34,6 +34,9 @@ class TrackerProxy(object):
         self.system.tell(self.tracker_1, cfg)
 
         self.system.tell(self.img_streamer, ActorConfig({"buffer": self.image_buffer}))
+        self.system.tell(self.img_streamer, "hz 30")
+
+        # self.system.tell(self.image_buffer, ActorConfig({"tracker": self.image_buffer}))
 
         
     def warmup_localizer(self):
@@ -68,6 +71,12 @@ class TrackerProxy(object):
         assert img_id > old_img_id
         assert isinstance(img_id, int)
         return img_id
+
+    def get_latest_available_estimate(self):
+        result = self.system.ask(self.result_logger, "latest_estimate")
+        assert isinstance(result, TrackerRequest)
+        return result
+
 
 
     def get_estimate(self, img: (np.ndarray, TrackerRequest) = None, timeout: float = 10.0, min_id: int = None):
