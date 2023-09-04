@@ -1,10 +1,12 @@
 
-
+import logging
 
 import time
 from olt.actor_tracker import TrackerRequest
 from olt.tracker_proxy import TrackerProxy
 import pytest
+
+logger = logging.getLogger("test_perf.log")
 
 def verify_output(poses, gt=None):
     assert isinstance(poses, dict)
@@ -92,6 +94,39 @@ def test_stream_preds(tracker_proxy):
     for pred in preds:
         assert isinstance(pred, TrackerRequest)
         print(pred.result_log_time - pred.img_time)
+
+def test_get_estimate_performance(benchmark, tracker_proxy):
+    tp = tracker_proxy
+    assert isinstance(tp, TrackerProxy)
+
+    tp._stream_imgs(True)
+
+    time.sleep(5.0)
+
+    preds = []
+
+    def setup():
+        logger.info("setup")
+        time.sleep(0.5)
+        
+    pred = benchmark.pedantic(tp.get_estimate, setup=setup, rounds=20)
+    print("hello")
+
+    # preds.append(pred)
+    assert isinstance(pred, TrackerRequest)
+    assert time.time() >= pred.result_log_time >= pred.img_time
+    assert time.time() - pred.result_log_time <= 1.0
+    assert pred.result_log_time - pred.img_time <= 2.0
+    logger.info(f"Time from image capture to result: {pred.result_log_time - pred.img_time}")
+    logger.info(f"Time from image capture to output: {time.time() - pred.img_time}")
+
+    tp._stream_imgs(False)
+
+
+def test_logging():
+    for i in [1,2,3]:
+        logger.info("hello logger!")
+        time.sleep(0.5)
 
 
     

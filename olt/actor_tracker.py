@@ -142,13 +142,14 @@ class ImageBuffer(Actor):
     
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
-            logging.info(f"received image to buffer")
             # save image to buffer
             if message.has_image() and message.has_id():
+                logging.info(f"received image with given id {message.img_id} to buffer")
                 self.add_img(message, message.img_id)
                 # self.send(sender, message)
             if message.has_image() and not message.has_id():
                 new_id = self.get_id()
+                logging.info(f"received image {new_id} to buffer.")
                 self.add_img(message, new_id)
                 message.img_id = new_id
                 # self.send(sender, message)
@@ -177,6 +178,7 @@ class ImageBuffer(Actor):
                         new_msg.cosy_base_id = message.cosy_base_id
                         self.send(sender, new_msg)
                 else:
+                    logging.info(f"Buffer received image request for img {message.img_id}.")
                     message = self.get_image(message.img_id)
                     self.send(sender, message)
 
