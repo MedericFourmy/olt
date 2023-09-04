@@ -40,6 +40,8 @@ dependencies:
   - librealsense
   - quaternion
   - pytest
+  # extra for olt
+  - setproctitle
   - pip:
       - pybullet
       - distributed
