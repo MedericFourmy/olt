@@ -114,10 +114,27 @@ class ImageBuffer(Actor):
         self.capacity = 120
         self.images = {} # image id to image
         self.image_id_deque = deque(maxlen=self.capacity)
+
+        self.open_result_requests = {} # img_id to message waiting for that image_id
         
         
         
         super().__init__(*args, **kwargs)
+
+    def serve_message(self, img_id):
+        for sender, message in self.open_result_requests[img_id]: 
+            assert isinstance(message, TrackerRequest)
+            self.send(sender, self.images[message.img_id])
+
+        logging.info(f"Buffer served {len(self.open_result_requests[img_id])} requests for img_id {img_id}.")
+        del self.open_result_requests[img_id]
+
+    def add_result_request(self, img_id, sender, message):
+        sender_msg_tuple = (sender, message)
+        if img_id not in self.open_result_requests.keys():
+            self.open_result_requests[img_id] = [sender_msg_tuple]
+        else:
+            self.open_result_requests[img_id].append(sender_msg_tuple)
 
     def add_img(self, img, img_id):
         if len(self.image_id_deque) >= self.capacity:
@@ -146,12 +163,17 @@ class ImageBuffer(Actor):
             if message.has_image() and message.has_id():
                 logging.info(f"received image with given id {message.img_id} to buffer")
                 self.add_img(message, message.img_id)
+                if message.img_id in self.open_result_requests.keys():
+                    self.serve_message(message.img_id)
                 # self.send(sender, message)
             if message.has_image() and not message.has_id():
                 new_id = self.get_id()
                 logging.info(f"received image {new_id} to buffer.")
                 self.add_img(message, new_id)
                 message.img_id = new_id
+                if message.img_id in self.open_result_requests.keys():
+                    self.serve_message(message.img_id)
+
                 # self.send(sender, message)
 
             # get image from buffer
@@ -179,8 +201,13 @@ class ImageBuffer(Actor):
                         self.send(sender, new_msg)
                 else:
                     logging.info(f"Buffer received image request for img {message.img_id}.")
-                    message = self.get_image(message.img_id)
-                    self.send(sender, message)
+                    try:
+                        message = self.get_image(message.img_id)
+                        logging.info(f"Buffer serves image request {message.img_id} directly.")
+                        self.send(sender, message)
+                    except IndexError as e:
+                        logging.info(f"Buffer will answer request for img {message.img_id} ASAP.")
+                        self.add_result_request(img_id=message.img_id, sender=sender, message=message)
 
         if isinstance(message, str) and message == "stats":
             s = f"buffer length {len(self.images.keys())}"
