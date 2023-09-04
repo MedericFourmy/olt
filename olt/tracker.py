@@ -78,14 +78,14 @@ class Tracker:
         self.renderer_geometry = pyicg.RendererGeometry('renderer geometry')
 
         self.color_camera = pyicg.DummyColorCamera('cam_color')
-        self.color_camera.color2depth_pose = np.eye(4)
-        self.color_camera.camera2world_pose = np.eye(4)  # assume 1 camera fixed and aligned with world frame
+        self.color_camera.color2depth_pose = self.color2depth_pose
+        self.color_camera.camera2world_pose = np.eye(4)  # color camera fixed at the origin of the world
         self.color_camera.intrinsics = pyicg.Intrinsics(**self.rgb_intrinsics)
 
         if self.cfg.use_depth:
             self.depth_camera = pyicg.DummyDepthCamera('cam_depth')
             self.depth_camera.color2depth_pose = self.color2depth_pose
-            self.depth_camera.camera2world_pose = np.eye(4)  # assume 1 camera fixed and aligned with world frame
+            self.depth_camera.camera2world_pose = self.color_camera.depth2color_pose  # world shifted by depth2color transformation
             self.depth_camera.intrinsics = pyicg.Intrinsics(**self.depth_intrinsics)
 
         # Viewers
