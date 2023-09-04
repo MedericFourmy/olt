@@ -469,6 +469,10 @@ class LocalizerActor(Actor):
                 if self.POLLING:
                     logging.info(f"Polling new img after finishing a prediction.")
                     self.send(self.buffer, "latest_image")
+        if isinstance(message, WakeupMessage) and message.payload == "poll":
+            logging.info(f"Polling new img from wakeup message.")
+            self.send(self.buffer, "latest_image")
+
         if isinstance(message, str) and message == "poll":
             logging.info(f"Polling new img from outside trigger.")
 
