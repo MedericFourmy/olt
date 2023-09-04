@@ -69,7 +69,9 @@ def test_stream_preds(tracker_proxy):
     current_img_id = -1
     while running:
         assert isinstance(current_img_id, int)
+        t = time.time()
         pred = tp.get_estimate(timeout=30.0, min_id=current_img_id+1)
+        print('Pred took ', time.time() - t)
         if pred is None:
             pytest.fail("the pred should not be None")
         assert isinstance(pred, TrackerRequest)
