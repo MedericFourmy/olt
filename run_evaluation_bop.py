@@ -6,30 +6,38 @@ See https://bop.felk.cvut.cz/challenges/bop-challenge-2019/#howtoparticipate
 
 
 import time
+import numpy as np
 from pathlib import Path
 
 from olt.tracker import Tracker
 from olt.localizer import Localizer
 from olt.evaluation_tools import BOPDatasetReader, append_result, run_bop_evaluation
-from olt.config import BOP_DS_DIRS, OBJ_MODEL_DIRS, EvaluationBOPConfig
+from olt.config import OBJ_MODEL_DIRS, EvaluationBOPConfig
 from olt.utils import create_video_from_images, obj_name2id
 
 from bop_toolkit_lib import inout  # noqa
+
+USE_DEPTH = True
 
 
 eval_cfg = EvaluationBOPConfig() 
 eval_cfg.ds_name = 'ycbv'
 
-eval_cfg.tracker_cfg.viewer_display = False
+eval_cfg.tracker_cfg.viewer_display = True
 eval_cfg.tracker_cfg.viewer_save = False
 eval_cfg.tracker_cfg.n_corr_iterations = 5
 eval_cfg.tracker_cfg.n_update_iterations = 2
+eval_cfg.tracker_cfg.use_depth = USE_DEPTH
+eval_cfg.tracker_cfg.measure_occlusions = True
+
 # eval_cfg.tracker_cfg.n_corr_iterations = 0
 # eval_cfg.tracker_cfg.n_update_iterations = 0
-eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 10000.0
-eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
+eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 20000.0
+eval_cfg.tracker_cfg.tikhonov_parameter_translation = 50000.0
+
 
 SKIP_N_IMAGES = 0
+
 
 NB_IMG_RUN = -1  # all
 # NB_IMG_RUN = 50
@@ -37,21 +45,23 @@ NB_IMG_RUN = -1  # all
 # Run the pose estimation (or get the groundtruth) every <LOCALIZE_EVERY> frames
 # LOCALIZE_EVERY = NB_IMG_RUN # Never again
 # LOCALIZE_EVERY = 1
-LOCALIZE_EVERY = 20
+LOCALIZE_EVERY = 60
 
 PRINT_INFO_EVERY = 60
 
-USE_GT_FOR_LOCALIZATION = False
+USE_GT_FOR_LOCALIZATION = True
 
 ds_name = eval_cfg.ds_name
 # ds_name = 'rotd'
-reader = BOPDatasetReader(ds_name)
+reader = BOPDatasetReader(ds_name, load_depth=USE_DEPTH)
 
 eval_cfg.localizer_cfg.n_workers = 1
 localizer = Localizer(eval_cfg.ds_name, eval_cfg.localizer_cfg)
 
 all_sids = sorted(reader.map_sids_vids.keys())
 sidmax = all_sids[-1]
+
+all_sids = [all_sids[2]]
 
 all_results = []
 
@@ -64,7 +74,12 @@ for sid in all_sids:
     vidmax = reader.map_sids_vids[sid][-1]
 
     accepted_objs='all'
-    tracker = Tracker(reader.get_intrinsics(sid, vid0), OBJ_MODEL_DIRS[eval_cfg.ds_name], accepted_objs, eval_cfg.tracker_cfg)
+    intrinsics = reader.get_intrinsics(sid, vid0)  # for BOP, rgb and depth have same intrinsics
+    T_d_c = np.eye(4)
+    if USE_DEPTH:
+        tracker = Tracker(OBJ_MODEL_DIRS[eval_cfg.ds_name], accepted_objs, eval_cfg.tracker_cfg, intrinsics, intrinsics, T_d_c)
+    else:
+        tracker = Tracker(OBJ_MODEL_DIRS[eval_cfg.ds_name], accepted_objs, eval_cfg.tracker_cfg, intrinsics)
     tracker.init()
 
     N_views = len(reader.map_sids_vids[sid])
@@ -76,8 +91,8 @@ for sid in all_sids:
         
         vid = reader.map_sids_vids[sid][i]
 
-        K, height, width = reader.get_cam_data(sid, vid)
-        rgb = reader.get_img(sid, vid)
+        K, height, width = reader.get_Kres(sid, vid)
+        obs = reader.get_obs(sid, vid)
 
         #######################################
         # Synchronous localization and tracking
@@ -87,12 +102,15 @@ for sid in all_sids:
             if USE_GT_FOR_LOCALIZATION:
                 poses = reader.predict_gt(sid=sid, vid=vid)
             else:
-                poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=2)
+                poses = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=2)
                     
         dt_localize = time.time() - t
 
         tracker.detected_bodies(poses)
-        tracker.set_image(rgb)
+        if USE_DEPTH:
+            tracker.set_image(obs.rgb, obs.depth)
+        else:
+            tracker.set_image(obs.rgb)
         dt_track = tracker.track()
         t = time.time()
         if eval_cfg.tracker_cfg.viewer_display or eval_cfg.tracker_cfg.viewer_save:

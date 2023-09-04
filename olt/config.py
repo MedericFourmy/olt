@@ -23,6 +23,8 @@ class TrackerConfig:
     viewer_save: bool = False
     tikhonov_parameter_rotation: float = 1000.0
     tikhonov_parameter_translation: float = 30000.0
+    use_depth: bool = False
+    measure_occlusions: bool = False
 
 
 @dataclass

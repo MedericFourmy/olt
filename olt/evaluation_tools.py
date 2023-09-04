@@ -23,13 +23,14 @@ class BOPDatasetReader:
     vid: vid
     """
 
-    def __init__(self, ds_name: str, ds_split='test', enforce_targets=False):
+    def __init__(self, ds_name: str, ds_split='test', enforce_targets=False, load_depth=False):
         self.ds_name = ds_name
 
         self.bs = BOPDataset(
             ds_dir=BOP_DS_DIRS[ds_name],
             label_format=ds_name + "-{label}",
-            split=ds_split
+            split=ds_split,
+            load_depth=load_depth
         )
 
         targets_filename = BOP_DS_DIRS[ds_name] / "test_targets_bop19.json"
@@ -43,28 +44,31 @@ class BOPDatasetReader:
         # values: pd.Index of vids
         self.map_sids_vids = self.bs.frame_index.groupby('scene_id').view_id.apply(list).to_dict()
 
-    def get_cam_data(self, sid, vid):
-        infos = ObservationInfos(sid, vid)
-        obs = self.bs._load_scene_observation(infos)
-        K = obs.camera_data.K
-        height, width = obs.camera_data.resolution
-
-        return K, height, width
-    
     def check_if_in_bop19_targets(self, scene_id, view_id):
         if self.df_targets is None:
             # No target associated to the dataset
             return True
         return len(self.df_targets[(self.df_targets['scene_id'] == scene_id) & (self.df_targets['im_id'] == view_id)]) > 0
     
-    def get_img(self, sid, vid):
+    def get_obs(self, sid, vid):
         infos = ObservationInfos(sid, vid)
-        obs = self.bs._load_scene_observation(infos)
+        return self.bs._load_scene_observation(infos)
 
-        return obs.rgb
+    def get_rgb(self, sid, vid):
+        return self.get_obs(sid, vid).rgb
 
+    def get_depth(self, sid, vid):
+        return self.get_obs(sid, vid).depth
+
+    def get_Kres(self, sid, vid):
+        obs = self.get_obs(sid, vid)
+        K = obs.camera_data.K
+        height, width = obs.camera_data.resolution
+
+        return K, height, width
+    
     def get_intrinsics(self, sid, vid):
-        K, height, width = self.get_cam_data(sid, vid)
+        K, height, width = self.get_Kres(sid, vid)
         return Kres2intrinsics(K, width, height)
 
     def predict_gt(self, sid: int, vid: int):
