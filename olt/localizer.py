@@ -39,7 +39,7 @@ class Localizer:
                                                                         n_refiner_iterations=n_refiner,
                                                                         detection_th=self.cfg.detector_threshold)
         except AttributeError as e:
-            poses = {}
+            return {}
 
         # Send all poses to cpu to be able to process them
         poses = predictions.poses.cpu()
