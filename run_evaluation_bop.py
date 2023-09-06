@@ -17,7 +17,7 @@ from olt.utils import create_video_from_images, obj_name2id
 
 from bop_toolkit_lib import inout  # noqa
 
-USE_DEPTH = True
+USE_DEPTH = True 
 
 
 eval_cfg = EvaluationBOPConfig() 
@@ -25,16 +25,17 @@ eval_cfg.ds_name = 'ycbv'
 
 eval_cfg.tracker_cfg.viewer_display = True
 eval_cfg.tracker_cfg.viewer_save = False
-eval_cfg.tracker_cfg.n_corr_iterations = 5
+eval_cfg.tracker_cfg.n_corr_iterations = 4
 eval_cfg.tracker_cfg.n_update_iterations = 2
+# eval_cfg.tracker_cfg.n_corr_iterations = 0
+# eval_cfg.tracker_cfg.n_update_iterations = 0
 eval_cfg.tracker_cfg.use_depth = USE_DEPTH
 eval_cfg.tracker_cfg.measure_occlusions = True
 
 # eval_cfg.tracker_cfg.n_corr_iterations = 0
 # eval_cfg.tracker_cfg.n_update_iterations = 0
-eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 20000.0
-eval_cfg.tracker_cfg.tikhonov_parameter_translation = 50000.0
-
+eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 5000.0
+eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
 
 SKIP_N_IMAGES = 0
 
@@ -49,7 +50,7 @@ LOCALIZE_EVERY = 60
 
 PRINT_INFO_EVERY = 60
 
-USE_GT_FOR_LOCALIZATION = True
+USE_GT_FOR_LOCALIZATION = False
 
 ds_name = eval_cfg.ds_name
 # ds_name = 'rotd'
@@ -75,9 +76,9 @@ for sid in all_sids:
 
     accepted_objs='all'
     intrinsics = reader.get_intrinsics(sid, vid0)  # for BOP, rgb and depth have same intrinsics
-    T_d_c = np.eye(4)
+    color2depth_pose = np.eye(4)
     if USE_DEPTH:
-        tracker = Tracker(OBJ_MODEL_DIRS[eval_cfg.ds_name], accepted_objs, eval_cfg.tracker_cfg, intrinsics, intrinsics, T_d_c)
+        tracker = Tracker(OBJ_MODEL_DIRS[eval_cfg.ds_name], accepted_objs, eval_cfg.tracker_cfg, intrinsics, intrinsics, color2depth_pose)
     else:
         tracker = Tracker(OBJ_MODEL_DIRS[eval_cfg.ds_name], accepted_objs, eval_cfg.tracker_cfg, intrinsics)
     tracker.init()

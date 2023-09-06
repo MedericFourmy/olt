@@ -15,9 +15,6 @@ import shutil
 from typing import Union
 import pyicg
 
-
-
-from olt.utils import tq_to_SE3, obj_name2id
 from olt.config import TrackerConfig
 
 
@@ -43,9 +40,6 @@ class Tracker:
         if cfg.use_depth:
             assert depth_intrinsics is not None
 
-        if cfg.measure_occlusions:
-            assert cfg.use_depth
-
         # print('TrackerConfig:\n', cfg)
         self.cfg = cfg
         self.tmp_dir = Path(self.cfg.tmp_dir_name)
@@ -55,7 +49,7 @@ class Tracker:
         # Camera parameters
         self.rgb_intrinsics = rgb_intrinsics
         self.depth_intrinsics = depth_intrinsics
-        self.color2depth_pose = color2depth_pose
+        self.color2depth_pose = color2depth_pose if color2depth_pose is not None else np.eye(4)
 
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
@@ -78,29 +72,40 @@ class Tracker:
         self.renderer_geometry = pyicg.RendererGeometry('renderer geometry')
 
         self.color_camera = pyicg.DummyColorCamera('cam_color')
-        self.color_camera.color2depth_pose = np.eye(4)
-        self.color_camera.camera2world_pose = np.eye(4)  # assume 1 camera fixed and aligned with world frame
+        self.color_camera.color2depth_pose = self.color2depth_pose
+        self.color_camera.camera2world_pose = np.eye(4)  # color camera fixed at the origin of the world
         self.color_camera.intrinsics = pyicg.Intrinsics(**self.rgb_intrinsics)
 
         if self.cfg.use_depth:
             self.depth_camera = pyicg.DummyDepthCamera('cam_depth')
             self.depth_camera.color2depth_pose = self.color2depth_pose
-            self.depth_camera.camera2world_pose = np.eye(4)  # assume 1 camera fixed and aligned with world frame
+            self.depth_camera.camera2world_pose = self.color_camera.depth2color_pose  # world shifted by depth2color transformation
             self.depth_camera.intrinsics = pyicg.Intrinsics(**self.depth_intrinsics)
 
         # Viewers
-        color_viewer = pyicg.NormalColorViewer(self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
+        self.color_viewer = pyicg.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
         if self.cfg.viewer_save:
-            color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
-        color_viewer.set_opacity(0.5)  # [0.0-1.0]
-        color_viewer.display_images = self.cfg.viewer_display
+            self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
+        self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
+        self.color_viewer.display_images = self.cfg.viewer_display
+
+        if self.cfg.use_depth:
+            depth_viewer = pyicg.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
+            if self.cfg.viewer_save:
+                depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
+            depth_viewer.display_images = self.cfg.viewer_display
+
 
         # Main class
         self.tracker = pyicg.Tracker('tracker', synchronize_cameras=False)
-        self.tracker.AddViewer(color_viewer)
+        self.tracker.AddViewer(self.color_viewer)
+        display_depth = True
+        if self.cfg.use_depth and display_depth:
+            self.tracker.AddViewer(depth_viewer)
 
         # bodies: create 1 for each object model with body names = body ids
         self.bodies, self.object_files = self.create_bodies(self.obj_model_dir, self.accepted_objs, self.geometry_unit_in_meter_ycbv_urdf)
+        self.set_all_bodies_behind_camera()
 
         self.region_models = {}
         self.region_modalities = {} 
@@ -116,8 +121,14 @@ class Tracker:
 
             # Q: Possible to create on the fly?
             self.region_modalities[bname] = pyicg.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])
+            
+            self.region_modalities[bname].scales = self.cfg.region_scales
+            self.region_modalities[bname].standard_deviations = self.cfg.region_standard_deviations
+
             if self.cfg.use_depth:
                 self.depth_modalities[bname] = pyicg.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
+                self.depth_modalities[bname].considered_distances = self.cfg.depth_considered_distances
+                self.depth_modalities[bname].standard_deviations = self.cfg.depth_standard_deviations
 
                 # Detect occlusion using measured depth and use it to improve estimates
                 if self.cfg.measure_occlusions:
@@ -151,6 +162,12 @@ class Tracker:
 
         self.iteration = 0
 
+    def set_all_bodies_behind_camera(self):
+        T_bc = np.eye(4)
+        T_bc[2,3] = -100
+        for body in self.bodies.values():
+            body.body2world_pose = T_bc
+
     def create_bodies(self, 
                     object_model_dir: Path, 
                     accepted_objs: Union[set[str],str], 
@@ -182,18 +199,6 @@ class Tracker:
             if accepted_objs == 'all' or obj_name in accepted_objs
         }
 
-        ###########################
-        ## TEST BODY INIT
-        ###########################
-        T_bc = np.eye(4)
-        # T_bc[2,3] = -0.8 
-        T_bc[2,3] = -1000000000000
-        for body in bodies.values():
-        #     T[0,3] = np.random.random() - 0.25
-            body.body2world_pose = T_bc
-        ###########################
-        ###########################
-
         return bodies, object_files
 
     def detected_bodies(self, detections: dict[str, np.array]):
@@ -210,7 +215,10 @@ class Tracker:
         FOR NOW: assume unique objects and reinitialize there pose
         """
 
+
         # Implementation 1: just update the current estimates, 1 object per cat
+        self.set_all_bodies_behind_camera()
+
         self.active_tracks = []
         for obj_name, T_co in detections.items():
             self.active_tracks.append(obj_name)
