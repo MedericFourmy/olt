@@ -14,8 +14,35 @@ import logging
 from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig, logcfg
 from pyicg import Body
 
+import functools
+import cProfile
 
+def measure_load(func):
+    @functools.wraps(func)
+    def wrapper_load_measure(*args, **kwargs):
+        start_time = time.perf_counter()
+        with cProfile.Profile() as pr:
+            value = func(*args, **kwargs)
+            # pr.create_stats()
+            # logging.info(pr.stats)
+            # pr.print_stats()
+        end_time = time.perf_counter()
+        run_time = end_time - start_time
+        self = args[0]
 
+        try:
+            self.start_times.append(start_time)
+        except AttributeError as e:
+            self.start_times = deque([start_time])
+        try:
+            self.end_times.append(end_time)
+        except AttributeError as e:
+            self.end_times = deque([end_time])
+
+        load = (np.sum(np.array(self.end_times)- np.array(self.start_times))) / (self.end_times[-1] - self.start_times[0])
+        logging.info(f"{type(args[0])} was running with {100* load} %")
+        return value
+    return wrapper_load_measure
 
 @dataclass
 class TrackerRequest(object):
@@ -28,6 +55,21 @@ class TrackerRequest(object):
     cosy_base_id:int = -1
     result_log_time: float = -1.0
     send_all_newer_images: bool = False
+    timeout_policy: str = 'newest'
+    timeout: float = 0.5
+
+    def __eq__(self, __value: object) -> bool:
+        if not isinstance(__value, self.__class__):
+            return False
+        
+        for attr1, attr2 in zip(self.__dir__(), __value.__dir__()):
+            if attr1 != attr2:
+                return False
+           
+        if any(self.__dict__ != __value.__dict__):
+            return False
+        
+        return True
 
 
     def has_image(self):
@@ -82,6 +124,7 @@ class ImageStreamerActor(Actor):
             self.receivers.update(message.addressbook)
         if isinstance(message, str) and message == "start":
             self.active = True
+            self.wakeupAfter(timedelta(seconds=self.dt))
         if isinstance(message, str) and message == "stop":
             self.active = False
         if isinstance(message, str) and "hz" in message: # "hz 30"
@@ -90,7 +133,8 @@ class ImageStreamerActor(Actor):
         if isinstance(message, str) and message in self.__dir__():
             self.send(sender, self.__getattribute__(message))
 
-        if self.active:
+        
+        if isinstance(message, WakeupMessage) and self.active:
             self.wakeupAfter(timedelta(seconds=self.dt))
             try:
                 new_msg = TrackerRequest._get_sample_img_msg(self.index)
@@ -157,6 +201,7 @@ class ImageBuffer(Actor):
             highest_id = 0
         return highest_id + 1
     
+    @measure_load
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
             # save image to buffer
@@ -238,6 +283,8 @@ class ResultLoggerActor(Actor):
         self.earliest_result = 10000
         self.highest_cosy_base_id = -1
         self.open_result_requests = {} # img_id to message waiting for that image_id
+
+        self.message_triggers = []
      
         super().__init__(*args, **kwargs)
 
@@ -268,12 +315,28 @@ class ResultLoggerActor(Actor):
         del self.open_result_requests[img_id] 
 
     def add_result_request(self, img_id, sender, message):
+        assert isinstance(message, TrackerRequest)
         sender_msg_tuple = (sender, message)
         if img_id not in self.open_result_requests.keys():
             self.open_result_requests[img_id] = [sender_msg_tuple]
         else:
             self.open_result_requests[img_id].append(sender_msg_tuple)
+
+        if message.timeout_policy == "newest":
+            def trigger(msg: TrackerRequest):
+                i = 0
+                while i < 2:
+                    yield [msg.img_id > message.img_id, sender_msg_tuple][i]
+                    i += 1
+            self.message_triggers.append(trigger)
+
+    def served(self, sender_msg_tuple):
+        # remove the request from the open req dict
+        sender, msg = sender_msg_tuple
+        assert isinstance(msg, TrackerRequest)
+        self.open_result_requests[msg.img_id].remove(sender_msg_tuple)
     
+    @measure_load
     def receiveMessage(self, message, sender):
         if isinstance(message, TrackerRequest):
             # assert message.has_cosy_base_id()
@@ -291,6 +354,17 @@ class ResultLoggerActor(Actor):
                     
                     logging.error(f"Got message {message.img_id} that a message requested.")
                     self.serve_message(message.img_id)
+                
+                # if a trigger is true for a message, it will first yield true and then the orig sender and message
+                for trigger in self.message_triggers:
+                    it = trigger(message)
+                    if it.__next__():
+                        orig_sender, orig_msg = it.__next__()
+                        self.send(orig_sender, message)
+                        try:
+                            self.served((orig_sender, orig_msg))
+                        except ValueError as e:
+                            pass
 
             # provide tracker results from previous image ids as estimate 
             elif message.has_id() and message.has_cosy_base_id():
@@ -308,10 +382,11 @@ class ResultLoggerActor(Actor):
                     self.add_result_request(message.img_id - 1, sender, message)
             # provide result for any img_id
             elif message.has_id() and not message.has_cosy_base_id():
+
                 
                 try:
                     if self.earliest_result > message.img_id:
-                        logging.error(f"result {message.img_id} not available. Smaller than all results. provide earliest result instead.")
+                        logging.error(f"result {message.img_id} not available. Requested img_id smaller than all results. provide earliest result instead.")
                         self.send(sender, self.store[self.earliest_result][-1])
                         return
                 except KeyError as e:
@@ -327,11 +402,40 @@ class ResultLoggerActor(Actor):
                     logging.error(f"result {message.img_id} not yet available. Will answer ASAP")
                     # self.open_result_requests[message.img_id] = (sender, message)
                     self.add_result_request(message.img_id, sender, message)
+                    self.wakeupAfter(message.timeout, (sender, message))
                     return
+                
+        if isinstance(message, WakeupMessage):
+            orig_sender, orig_msg = message.payload
+            assert isinstance(orig_msg, TrackerRequest)
+            if orig_msg.timeout_policy is "none":
+                if orig_msg.img_id in self.open_result_requests.keys():
+                    if (orig_sender, orig_msg) in self.open_result_requests[orig_msg.img_id]:
+                        # the message is still there, so we must send None
+                        logging.warn(f"request for result {orig_msg.img_id} could not be ansered in time so we sende None.")
+                        self.send(orig_sender, None)
+
+                        self.open_result_requests[orig_msg.img_id].remove((orig_sender, orig_msg))
+                return
+            
+            if orig_msg.timeout_policy == "newest":
+                if orig_msg.img_id in self.open_result_requests.keys():
+                    if (orig_sender, orig_msg) in self.open_result_requests[orig_msg.img_id]:
+                        # the message is still there, so we must send the newest available result
+                        logging.warn(f"request for result {orig_msg.img_id} could not be ansered in time so we sende the newest one.")
+                        self.send(orig_sender, self.store[self.latest_result][-1])
+
+                        
+                        self.open_result_requests[orig_msg.img_id].remove((orig_sender, orig_msg))
+                return
+
                 
         
         if isinstance(message, str) and message == "latest_estimate":
-            self.send(sender, self.store[self.latest_result][-1])
+            try:
+                self.send(sender, self.store[self.latest_result][-1])
+            except KeyError as e:
+                self.send(sender, None)
 
         if isinstance(message, str) and message == "print":
             print(self.store.keys())
@@ -353,7 +457,7 @@ class DispatcherActor(Actor):
              
         super().__init__(*args, **kwargs)
 
-
+    @measure_load
     def receiveMessage(self, message, sender):
         if isinstance(message, ActorConfig):
             self.buffer = message.addressbook["buffer"]
@@ -462,6 +566,7 @@ class LocalizerActor(Actor):
         logging.warn("killing localizer from inside.")
         os.kill(os.getpid(), 9)
 
+    @measure_load
     def receiveMessage(self, message, sender):
         if isinstance(message, ActorConfig):
             self.buffer = message.addressbook["buffer"]
@@ -552,6 +657,7 @@ class TrackerActor(Actor):
 
         super().__init__(*args, **kwargs)
 
+    @measure_load
     def receiveMessage(self, message, sender):
         if isinstance(message, ActorConfig):
             self.image_buffer = message.addressbook["buffer"]
@@ -579,6 +685,9 @@ class TrackerActor(Actor):
                 # the message must be consecutive!
                 assert message.img_id == self.last_img_id + 1
             if message.has_image():
+                if self.POLLING:
+                    logging.info(f"Tracker is polling for img {message.img_id+1} on cosy_base_id track {self.cosy_base_id}.")
+                    self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+1))
                 self.tracker.set_image(message.img)
                 self.tracker.track()
                 self.last_img_id = message.img_id
@@ -594,9 +703,7 @@ class TrackerActor(Actor):
                     message.img = None
                 self.send(self.result_logger, message)
 
-                if self.POLLING:
-                    logging.info(f"Tracker is polling for img {message.img_id+1} on cosy_base_id track {self.cosy_base_id}.")
-                    self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+1))
+                
 
             # logging.warn(f"unhandled message in tracker: {message}")
 

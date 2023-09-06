@@ -55,9 +55,14 @@ class TrackerProxy(object):
     def _trigger_localizer_polling(self):
         self.system.tell(self.localizer, "poll")
 
+    def get_latest_img_id(self):
+        img_id = self.system.ask(self.image_buffer, "latest_image_id", 0.5)
+        if isinstance(img_id, int):
+            return img_id
+        raise TimeoutError(f"We should not get this message {img_id}. Could be a timing issue.")
 
     def feed_image(self, req: (TrackerRequest, np.ndarray)) -> int:
-        old_img_id = self.system.ask(self.image_buffer, "latest_image_id", 0.2)
+        old_img_id = self.get_latest_img_id()
 
         
         if isinstance(req, np.ndarray):
@@ -74,7 +79,29 @@ class TrackerProxy(object):
 
     def get_latest_available_estimate(self):
         result = self.system.ask(self.result_logger, "latest_estimate")
-        assert isinstance(result, TrackerRequest)
+        # assert isinstance(result, TrackerRequest)
+        return result
+    
+    def get_estimate_wait_for_id(self, img_id: int):
+        raise NotImplementedError()
+    
+    def get_estimate_RT(self, img_id, timeout: float = 0.5, timeout_policy:str = "newest", message_delivery_time: float = 0.01):
+        deadline = time.time() + timeout
+        assert timeout_policy in ["newest", "none", "tracker_wait_for_id"]
+        if timeout <= 0.0:
+            return self.get_latest_available_estimate()
+        
+        req = TrackerRequest()
+        req.img_id = img_id
+        req.timeout_policy = timeout_policy
+        
+        
+        logging.info(f"asking result for img_id {req.img_id}.")
+        remaining_timeout = deadline - time.time()
+        req.timeout = remaining_timeout - message_delivery_time
+        result = self.system.ask(self.result_logger, req, remaining_timeout)
+        if result is None and timeout_policy is not "none":
+            raise TimeoutError()    
         return result
 
 
