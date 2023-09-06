@@ -6,6 +6,7 @@ See https://bop.felk.cvut.cz/challenges/bop-challenge-2019/#howtoparticipate
 
 
 import time
+import cv2
 import numpy as np
 from pathlib import Path
 
@@ -34,8 +35,14 @@ eval_cfg.tracker_cfg.measure_occlusions = True
 
 # eval_cfg.tracker_cfg.n_corr_iterations = 0
 # eval_cfg.tracker_cfg.n_update_iterations = 0
-eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 5000.0
+eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 2000.0
 eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
+
+# eval_cfg.tracker_cfg.depth_standard_deviations = [0.0, 0.0, 0.0]
+eval_cfg.tracker_cfg.depth_standard_deviations = [0.05, 0.03, 0.02]
+
+eval_cfg.localizer_cfg.detector_threshold = 0.6
+
 
 SKIP_N_IMAGES = 0
 
@@ -62,7 +69,7 @@ localizer = Localizer(eval_cfg.ds_name, eval_cfg.localizer_cfg)
 all_sids = sorted(reader.map_sids_vids.keys())
 sidmax = all_sids[-1]
 
-all_sids = [all_sids[2]]
+all_sids = [all_sids[1]]
 
 all_results = []
 
@@ -74,6 +81,7 @@ for sid in all_sids:
     vid0 = reader.map_sids_vids[sid][0]
     vidmax = reader.map_sids_vids[sid][-1]
 
+    # TODO: get it from BOP dataset target (localization taks: we can assume we know which objects are inthe scene)
     accepted_objs='all'
     intrinsics = reader.get_intrinsics(sid, vid0)  # for BOP, rgb and depth have same intrinsics
     color2depth_pose = np.eye(4)
@@ -95,32 +103,41 @@ for sid in all_sids:
         K, height, width = reader.get_Kres(sid, vid)
         obs = reader.get_obs(sid, vid)
 
+        # # Check RGB vs BGR ordering -> gives unsuable results from CosyPose and does not change the Tracker behavior
+        # gray = cv2.cvtColor(obs.rgb, cv2.COLOR_BGR2RGB)
+
+        # # Grayscale for fun -> pretty bad results for both
+        # gray = cv2.cvtColor(obs.rgb, cv2.COLOR_BGR2GRAY)
+        # obs.rgb = np.dstack([gray]*3)
+
         #######################################
         # Synchronous localization and tracking
         #######################################
-        t = time.time()
+        
+        dt_localize = 0
         if i % LOCALIZE_EVERY == 0:
+            t = time.perf_counter()
             if USE_GT_FOR_LOCALIZATION:
                 poses = reader.predict_gt(sid=sid, vid=vid)
             else:
-                poses = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=2)
-                    
-        dt_localize = time.time() - t
+                poses = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=6)
+            tracker.detected_bodies(poses)
+            dt_localize += time.perf_counter() - t
+            print('Localise (ms)', 1000*dt_localize)
 
-        tracker.detected_bodies(poses)
         if USE_DEPTH:
             tracker.set_image(obs.rgb, obs.depth)
         else:
             tracker.set_image(obs.rgb)
         dt_track = tracker.track()
-        t = time.time()
+        t = time.perf_counter()
         if eval_cfg.tracker_cfg.viewer_display or eval_cfg.tracker_cfg.viewer_save:
             tracker.update_viewers()
 
         if i % PRINT_INFO_EVERY == 0:
             print(f'Scene: {sid}/{sidmax}, View: {vid}/{vidmax}')
             print('track() (ms)', 1000*dt_track)
-            print('update_viewers() (ms)', 1000*(time.time() - t))
+            print('update_viewers() (ms)', 1000*(time.perf_counter() - t))
 
         # TODO:
         # Get current tracks from tracker -> new method!

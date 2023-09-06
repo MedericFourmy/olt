@@ -255,9 +255,9 @@ class Tracker:
             print('StartModalities!')
             self.tracker.StartModalities(self.iteration)
 
-        t = time.time()
+        t = time.perf_counter()
         self.tracker.ExecuteTrackingCycle(self.iteration)
-        dt = time.time() - t
+        dt = time.perf_counter() - t
 
         self.iteration += 1
 
@@ -282,9 +282,9 @@ class Tracker:
 
 
     def update_viewers(self):
-        t = time.time()
+        t = time.perf_counter()
         self.tracker.UpdateViewers(self.iteration)
-        dt = time.time() - t
+        dt = time.perf_counter() - t
         return dt
 
     def get_current_preds(self):
