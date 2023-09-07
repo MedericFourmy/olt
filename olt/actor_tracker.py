@@ -408,7 +408,7 @@ class ResultLoggerActor(Actor):
         if isinstance(message, WakeupMessage):
             orig_sender, orig_msg = message.payload
             assert isinstance(orig_msg, TrackerRequest)
-            if orig_msg.timeout_policy is "none":
+            if orig_msg.timeout_policy == "none":
                 if orig_msg.img_id in self.open_result_requests.keys():
                     if (orig_sender, orig_msg) in self.open_result_requests[orig_msg.img_id]:
                         # the message is still there, so we must send None
@@ -523,6 +523,8 @@ class DispatcherActor(Actor):
 
 class LocalizerActor(Actor):
     def __init__(self, *args, **kwargs):
+
+        logging.info("Starting Localizer")
 
         self.buffer = None
 
