@@ -33,14 +33,14 @@ def measure_load(func):
         try:
             self.start_times.append(start_time)
         except AttributeError as e:
-            self.start_times = deque([start_time])
+            self.start_times = deque([start_time], maxlen=1000)
         try:
             self.end_times.append(end_time)
         except AttributeError as e:
-            self.end_times = deque([end_time])
+            self.end_times = deque([end_time], maxlen=1000)
 
         load = (np.sum(np.array(self.end_times)- np.array(self.start_times))) / (self.end_times[-1] - self.start_times[0])
-        logging.info(f"{type(args[0])} was running with {100* load} %")
+        logging.info(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
         return value
     return wrapper_load_measure
 
@@ -408,7 +408,7 @@ class ResultLoggerActor(Actor):
         if isinstance(message, WakeupMessage):
             orig_sender, orig_msg = message.payload
             assert isinstance(orig_msg, TrackerRequest)
-            if orig_msg.timeout_policy is "none":
+            if orig_msg.timeout_policy == "none":
                 if orig_msg.img_id in self.open_result_requests.keys():
                     if (orig_sender, orig_msg) in self.open_result_requests[orig_msg.img_id]:
                         # the message is still there, so we must send None
@@ -524,6 +524,8 @@ class DispatcherActor(Actor):
 class LocalizerActor(Actor):
     def __init__(self, *args, **kwargs):
 
+        logging.info("Starting Localizer")
+
         self.buffer = None
 
         from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
@@ -570,7 +572,8 @@ class LocalizerActor(Actor):
     def receiveMessage(self, message, sender):
         if isinstance(message, ActorConfig):
             self.buffer = message.addressbook["buffer"]
-            self.dispatcher = message.addressbook["dispatcher"]
+            # self.dispatcher = message.addressbook["dispatcher"]
+            self.trackers = message.addressbook["trackers"]
             # self.localizer = message.addressbook["localizer"]
             # self.tracker = message.addressbook["tracker"]
             # self.result_logger = message.addressbook["result_logger"]
@@ -593,7 +596,7 @@ class LocalizerActor(Actor):
                     self.last_img_id = message.img_id
                     message.poses_cosy = poses
                     message.cosy_base_id = message.img_id
-                    self.send(self.dispatcher ,message)
+                    self.send(self.trackers ,message)
                 else:
                     # we polled the same image twice. In the test cases, where
                     # images come slow, we need to poll later or we are deadlocked.
@@ -616,6 +619,43 @@ class LocalizerActor(Actor):
         # if isinstance(message, ActorExitRequest) or isinstance(message, str) and message == "exit":
         #     self.send(sender, os.getpid())
             # self.exit()
+
+
+class TrackerManager(Actor):
+    def __init__(self, *args, **kwargs):
+
+        self.trackers = []
+            
+        self.last_tracker = 0
+        self.num_trackers = 2
+     
+        super().__init__(*args, **kwargs)
+
+    def reinit_next_tracker(self, message):
+        self.last_tracker += 1
+        
+        logging.info(f"sending tracker reset req with cosy_base_id {message.cosy_base_id} to tracker {self.last_tracker % self.num_trackers}")
+        self.send(self.trackers[self.last_tracker % self.num_trackers], message)
+
+    def add_tracker(self, cfg):
+        self.trackers.append(self.createActor(TrackerActor))
+        self.send(self.trackers[-1], cfg)
+
+
+    def receiveMessage(self, message, sender):
+        if isinstance(message, ActorConfig):
+            self.cfg = message
+            while len(self.trackers) < self.num_trackers:
+                self.add_tracker(self.cfg)
+            # for tracker in self.trackers:
+            #     self.send(tracker, message)
+            self.image_buffer = message.addressbook["buffer"]
+            self.result_logger = message.addressbook["result_logger"]
+        
+        if isinstance(message, TrackerRequest):
+            if message.has_image() and message.has_poses_cosy() and message.has_cosy_base_id():
+                self.reinit_next_tracker(message)
+
 
 class TrackerActor(Actor):
     def __init__(self, *args, **kwargs):

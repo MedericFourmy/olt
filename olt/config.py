@@ -45,7 +45,8 @@ class TrackerConfig:
 @dataclass
 class LocalizerConfig:
     detector_threshold: float = 0.8
-    n_workers: int = 2
+    n_workers: int = 1  # 0 not possible with 'panda'
+    renderer_name: str = 'bullet'  # options: 'bullet', 'panda'
 
 
 @dataclass

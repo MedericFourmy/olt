@@ -12,7 +12,7 @@ Then follow installation instructions from (except for conda env creation)
 
 ```bash
 mamba install setproctitle
-pip install thespian hypothesis pytest-benchmark
+pip install thespian hypothesis pytest-benchmark pynvml
 ```
 
 ```bash
