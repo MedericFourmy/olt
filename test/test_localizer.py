@@ -6,10 +6,36 @@ from olt.actor_tracker import LocalizerActor
 from olt.actor_tracker import TrackerRequest
 from olt.config import logcfg
 
+import logging
+
 from thespian.actors import *
 
 import numpy as np
 
+from pynvml import *
+
+logger = logging.getLogger("test_logger")
+
+@pytest.fixture(autouse=True)
+def check_gpu_mem():
+    nvmlInit()
+    h = nvmlDeviceGetHandleByIndex(0)
+    info = nvmlDeviceGetMemoryInfo(h)
+    logger.info(f'total    : {info.total}')
+    logger.info(f'free     : {info.free}')
+    logger.info(f'used     : {info.used}')
+
+    assert info.free > 2156686336
+
+    yield info
+    subprocess.run("kill -9 $(ps ax | grep Actor | fgrep -v grep | awk '{ print $1 }')", shell=True)
+
+    
+
+def test_check_gpu_mem_fixture(check_gpu_mem):
+
+    print(check_gpu_mem.free)
+    assert check_gpu_mem.free > 3156686336
 
 def shutdown(system):
     # localizer_pid = self.system.ask(self.localizer, 'exit')
