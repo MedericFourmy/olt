@@ -6,6 +6,8 @@
 #
 from __future__ import annotations
 
+from typing import Union
+
 import multiprocessing
 multiprocessing.set_start_method("spawn", force=True)
 from multiprocessing import SimpleQueue, Process, Manager
@@ -28,10 +30,12 @@ class ContinuousTracker:
         tracker_cfg: TrackerConfig,
         localizer_cfg: LocalizerConfig,
         ds_name: str,
-        rgb_intrinsics,
-        depth_intrinsics=None,
-        collect_statistics=False,
-        fake_localization_delay=0.0
+        rgb_intrinsics: dict,
+        depth_intrinsics: Union[dict,None] = None,
+        color2depth_pose: Union[np.ndarray,None] = None,
+        collect_statistics: bool = False,
+        fake_localization_delay: float = 0.0, 
+        accepted_objects: str = 'all'
     ) -> None:
         """
         gt_predictor: needed for GT localization, lambda f(sid, vid) -> object_poses, if
@@ -49,13 +53,15 @@ class ContinuousTracker:
 
         tracker_args = (
             OBJ_MODEL_DIRS[ds_name],
-            "all",
+            accepted_objects,
             tracker_cfg,
             rgb_intrinsics,
-            depth_intrinsics
+            depth_intrinsics,
+            color2depth_pose
         )
         self.main_tracker = Tracker(*tracker_args)
         self.main_tracker.init()
+
 
         self._initialized = False
 
@@ -108,6 +114,7 @@ class ContinuousTracker:
         and vid as well."""
 
         if not self._initialized:
+            print('Warming up CosyPose')
             # running the first iteration that will be slow, as we need to wait for the
             # localization results
             self.queue_img.put((img, depth, object_poses, sid, vid))
@@ -139,8 +146,6 @@ class ContinuousTracker:
         localizer_predict_kwargs=None,
         fake_localization_delay=0.0
     ):
-        """Use GT prediction to fake localizer, then run tracker until the pipe queue
-        is empty, send results to main thread and run localizer again."""
         localizer = Localizer(*localizer_args) if localizer_args is not None else None
 
         tracker = Tracker(*tracker_args)
