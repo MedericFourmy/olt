@@ -41,6 +41,8 @@ class TrackerProxy(object):
         
     def warmup_localizer(self):
         img = TrackerRequest._get_sample_img_msg(42)
+        assert isinstance(img, TrackerRequest)
+        assert img.has_image()
         poses = self.system.ask(self.localizer, img, 25.0)
         return poses
 
