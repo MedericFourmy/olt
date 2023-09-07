@@ -102,3 +102,4 @@ dependencies:
       # extra for olt
       - thespian
       - pytest-benchmark
+      - hypothesis
