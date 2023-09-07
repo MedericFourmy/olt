@@ -125,7 +125,7 @@ class ContinuousTracker:
         self.main_tracker.set_image(img, depth)
         self.main_tracker.track()
 
-        if self.tracker_cfg.viewer_display:
+        if self.tracker_cfg.viewer_display or self.tracker_cfg.viewer_save:
             self.main_tracker.update_viewers()
 
         return self.main_tracker.get_current_preds()
