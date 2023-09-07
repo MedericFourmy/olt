@@ -16,17 +16,19 @@ from olt.evaluation_tools import BOPDatasetReader
 from olt.rate import Rate
 
 
-def gt_predictor(sid, vid):
-    time.sleep(0.4)
-    return reader.predict_gt(sid=sid, vid=vid)
-
 
 if __name__ == "__main__":
+    USE_GT_FOR_LOCALIZATION = True
+    USE_DEPTH = True
+    FREQ = 30
+    FAKE_LOCALIZATION_DELAY = 0.4 if USE_GT_FOR_LOCALIZATION else 0.0
+
     eval_cfg = EvaluationBOPConfig()
     eval_cfg.ds_name = "ycbv"
     eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 2000.0
     eval_cfg.localizer_cfg.detector_threshold = 0.6
     eval_cfg.tracker_cfg.viewer_display = False
+    eval_cfg.tracker_cfg.use_depth = USE_DEPTH
 
     reader = BOPDatasetReader(
         eval_cfg.ds_name, load_depth=eval_cfg.tracker_cfg.use_depth
@@ -35,34 +37,46 @@ if __name__ == "__main__":
     sid = list(sorted(reader.map_sids_vids.keys()))[0]
     vid = reader.map_sids_vids[sid][0]
 
+    rgb_intrinsics = reader.get_intrinsics(sid, vid)
+    depth_intrinsics = rgb_intrinsics if USE_DEPTH else None  # same for YCBV
+
     continuous_tracker = ContinuousTracker(
-        eval_cfg=eval_cfg,
-        intrinsics=reader.get_intrinsics(sid, vid),
-        K=reader.get_Kres(sid, vid)[0],
-        collect_statistics=True
-        # gt_predictor=gt_predictor, # uncoment to use GT instead of cosypose
+        tracker_cfg=eval_cfg.tracker_cfg,
+        localizer_cfg=eval_cfg.localizer_cfg,
+        ds_name=eval_cfg.ds_name,
+        rgb_intrinsics=rgb_intrinsics,
+        depth_intrinsics=depth_intrinsics,
+        collect_statistics=True,
+        fake_localization_delay=FAKE_LOCALIZATION_DELAY
     )
 
     # initialize
-    continuous_tracker(reader.get_obs(sid, vid).rgb, sid, vid)
+    object_poses = reader.predict_gt(sid, vid) if USE_GT_FOR_LOCALIZATION else None
+    obs = reader.get_obs(sid, vid)
+    depth = obs.depth if USE_DEPTH else None
+    continuous_tracker(obs.rgb, depth, object_poses, sid, vid)
 
     n = 100
-    rate = Rate(frequency=30)
+    rate = Rate(frequency=FREQ)
     vids = reader.map_sids_vids[sid][:n]
     # preload images as this is quite slow IO operation
-    imgs = [reader.get_obs(sid, vid).rgb for vid in vids]
+    observations = [reader.get_obs(sid, vid) for vid in vids]
 
     processing_times = []
-    for vid, img in tqdm(zip(vids, imgs)):
+    for vid, obs in tqdm(zip(vids, observations)):
         start_time = time.time()
-        out = continuous_tracker(img, sid, vid)
+        
+        object_poses = reader.predict_gt(sid, vid) if USE_GT_FOR_LOCALIZATION else None
+        depth = obs.depth if USE_DEPTH else None
+        continuous_tracker(obs.rgb, depth, object_poses, sid, vid)
+        
         end_time = time.time()
         processing_times.append(1000 * (end_time - start_time))
         rate.sleep()
 
     continuous_tracker.finish()
 
-    fig, ax = plt.subplots(1, 1, squeeze=True)  # type: plt.Figure, plt.Axes
+    fig, ax = plt.subplots(1, 1, squeeze=True)
     ax.plot(vids, processing_times, "-o", color="tab:blue")
     ax.set_xlabel("Image id")
     ax.set_ylabel("Processing time [ms]")
