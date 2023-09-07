@@ -19,7 +19,7 @@ class Localizer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Cosypose
-        cosy_wrapper = CosyPoseWrapper(dataset_name=self.obj_dataset, n_workers=cfg.n_workers)
+        cosy_wrapper = CosyPoseWrapper(dataset_name=self.obj_dataset, n_workers=cfg.n_workers, renderer_name=cfg.renderer_name)
         self.pose_estimator = cosy_wrapper.pose_predictor
 
         # Megapose (TODO)
