@@ -18,7 +18,7 @@ from olt.rate import Rate
 
 
 if __name__ == "__main__":
-    USE_GT_FOR_LOCALIZATION = True
+    USE_GT_FOR_LOCALIZATION = False
     USE_DEPTH = True
     FREQ = 30
     FAKE_LOCALIZATION_DELAY = 0.4 if USE_GT_FOR_LOCALIZATION else 0.0
@@ -56,7 +56,8 @@ if __name__ == "__main__":
     depth = obs.depth if USE_DEPTH else None
     continuous_tracker(obs.rgb, depth, object_poses, sid, vid)
 
-    n = 100
+    n = 1000
+    # n = -1
     rate = Rate(frequency=FREQ)
     vids = reader.map_sids_vids[sid][:n]
     # preload images as this is quite slow IO operation

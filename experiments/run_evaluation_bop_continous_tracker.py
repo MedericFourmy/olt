@@ -35,7 +35,7 @@ IMG_FREQ = 30
 eval_cfg = EvaluationBOPConfig() 
 eval_cfg.ds_name = 'ycbv'
 
-eval_cfg.tracker_cfg.viewer_display = True
+eval_cfg.tracker_cfg.viewer_display = False
 eval_cfg.tracker_cfg.viewer_save = False
 eval_cfg.tracker_cfg.n_corr_iterations = 4
 eval_cfg.tracker_cfg.n_update_iterations = 2
@@ -118,13 +118,11 @@ if __name__ == '__main__':
 
             t = time.perf_counter()
             tracker_preds = continuous_tracker(obs.rgb, depth, object_poses, sid, vids[i])
-            print(f'{vids[i]} tracker_preds', tracker_preds)
             dt_track = time.perf_counter() - t
 
             if i % PRINT_INFO_EVERY == 0:
                 print(f'Scene: {sid}/{sidmax}, View: {vids[i]}/{vids[-1]}')
-                print('track() (ms)', 1000*dt_track)
-                print('update_viewers() (ms)', 1000*(time.perf_counter() - t))
+                print('track + update_viewers (ms)', 1000*dt_track)
 
             # scene_id, obj_id, view_id, score, TCO, dt
             score = 1
@@ -134,6 +132,9 @@ if __name__ == '__main__':
                     append_result(all_results, sid, obj_name2id(obj_name), vids[i], score, TCO, dt)
 
             rate.sleep()
+        
+        # Terminate localizer subprocess
+        continuous_tracker.finish()
 
 
 
