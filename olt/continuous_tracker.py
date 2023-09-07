@@ -6,9 +6,12 @@
 #
 from __future__ import annotations
 
+import multiprocessing
+multiprocessing.set_start_method("spawn", force=True)
+from multiprocessing import SimpleQueue, Process, Manager
+
 import time
 from copy import deepcopy
-from multiprocessing import SimpleQueue, Process, Manager
 
 import numpy as np
 

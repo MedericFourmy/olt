@@ -10,8 +10,8 @@ import time
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from olt.config import EvaluationBOPConfig
 from olt.continuous_tracker import ContinuousTracker
+from olt.config import EvaluationBOPConfig
 from olt.evaluation_tools import BOPDatasetReader
 from olt.rate import Rate
 
@@ -39,6 +39,7 @@ if __name__ == "__main__":
         eval_cfg=eval_cfg,
         intrinsics=reader.get_intrinsics(sid, vid),
         K=reader.get_Kres(sid, vid)[0],
+        collect_statistics=True
         # gt_predictor=gt_predictor, # uncoment to use GT instead of cosypose
     )
 
@@ -65,4 +66,9 @@ if __name__ == "__main__":
     ax.plot(vids, processing_times, "-o", color="tab:blue")
     ax.set_xlabel("Image id")
     ax.set_ylabel("Processing time [ms]")
+
+    x = [v[-1] for v in continuous_tracker.stats_updates_from_localizer]
+    miny = min(processing_times)
+    maxy = max(processing_times)
+    ax.vlines(x, ymin=[miny] * len(x), ymax=[maxy] * len(x), color="tab:green")
     plt.show()
