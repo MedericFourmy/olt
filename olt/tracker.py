@@ -68,6 +68,10 @@ class Tracker:
         self.imgs_dir.mkdir(parents=True)
         assert(self.obj_model_dir.exists())
 
+
+        # Main class
+        self.tracker = pyicg.Tracker('tracker', synchronize_cameras=False)
+        
         # Renderer for preprocessing
         self.renderer_geometry = pyicg.RendererGeometry('renderer geometry')
 
@@ -82,26 +86,24 @@ class Tracker:
             self.depth_camera.camera2world_pose = self.color_camera.depth2color_pose  # world shifted by depth2color transformation
             self.depth_camera.intrinsics = pyicg.Intrinsics(**self.depth_intrinsics)
 
-        # Viewers
-        self.color_viewer = pyicg.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
-        if self.cfg.viewer_save:
-            self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
-        self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
-        self.color_viewer.display_images = self.cfg.viewer_display
+        # # Viewers
+        # self.color_viewer = pyicg.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
+        # if self.cfg.viewer_save:
+        #     self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
+        # self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
+        # self.color_viewer.display_images = self.cfg.viewer_display
 
-        if self.cfg.use_depth:
-            depth_viewer = pyicg.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
-            if self.cfg.viewer_save:
-                depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
-            depth_viewer.display_images = self.cfg.viewer_display
+        # if self.cfg.use_depth:
+        #     depth_viewer = pyicg.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
+        #     if self.cfg.viewer_save:
+        #         depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
+        #     depth_viewer.display_images = self.cfg.viewer_display
 
-
-        # Main class
-        self.tracker = pyicg.Tracker('tracker', synchronize_cameras=False)
-        self.tracker.AddViewer(self.color_viewer)
-        display_depth = True
-        if self.cfg.use_depth and display_depth:
-            self.tracker.AddViewer(depth_viewer)
+        # self.tracker.AddViewer(self.color_viewer)
+        # display_depth = True
+        # if self.cfg.use_depth and display_depth:
+        #     self.tracker.AddViewer(depth_viewer)
+        # #####
 
         # bodies: create 1 for each object model with body names = body ids
         self.bodies, self.object_files = self.create_bodies(self.obj_model_dir, self.accepted_objs, self.geometry_unit_in_meter_ycbv_urdf)
@@ -221,6 +223,8 @@ class Tracker:
 
         self.active_tracks = []
         for obj_name, T_co in detections.items():
+            if obj_name not in self.bodies:
+                continue 
             self.active_tracks.append(obj_name)
             if isinstance(T_co, pyicg.Body):
                 self.bodies[obj_name].body2world_pose = T_co.body2world_pose
