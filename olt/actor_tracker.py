@@ -15,14 +15,31 @@ from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, Localiz
 from pyicg import Body
 
 import functools
-import cProfile
+import cProfile, pstats
+
+
+@dataclass
+class ProcessStats(object):
+    memory: int = -1
+    load: float = -1.0
+    # profile_stats: 
+
+
+def get_name(cl, dt):
+    s = f"{dt}_{}.profile"
+
 
 def measure_load(func):
     @functools.wraps(func)
     def wrapper_load_measure(*args, **kwargs):
         start_time = time.perf_counter()
-        with cProfile.Profile() as pr:
-            value = func(*args, **kwargs)
+        # with cProfile.Profile() as pr:
+        value = func(*args, **kwargs)
+            # pr.dump_stats(f"cprofile.log")
+
+            
+            
+            # pr.print_stats("cumulative")
             # pr.create_stats()
             # logging.info(pr.stats)
             # pr.print_stats()
@@ -40,7 +57,11 @@ def measure_load(func):
             self.end_times = deque([end_time], maxlen=1000)
 
         load = (np.sum(np.array(self.end_times)- np.array(self.start_times))) / (self.end_times[-1] - self.start_times[0])
-        logging.info(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
+        if run_time > 0.03:
+            logging.warn(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
+        else:
+            logging.info(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
+
         return value
     return wrapper_load_measure
 
