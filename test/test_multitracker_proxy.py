@@ -293,7 +293,7 @@ def test_make_pred_delay_graph(tracker_proxy):
     tp = tracker_proxy
     assert isinstance(tp, MultiTrackerProxy)
 
-    tp.system.tell(tp.img_streamer, "hz 10")
+    # tp.system.tell(tp.img_streamer, "hz 10")
 
 
     pred = None
@@ -321,15 +321,18 @@ def test_make_pred_delay_graph(tracker_proxy):
         t1 = time.time()
         logger.info(f'Pred took {t1 - t}')
 
-        if preds.__len__() == 0 or pred.img_id != preds[-1].img_id:
+        if preds.__len__() == 0 or pred.img_id >= preds[-1].img_id:
             preds.append(pred)
         else:
             continue
 
-        latest_img_id = tp.get_latest_img_id()
+        time.sleep(0.015)
 
-        current_img_id = min(current_img_id+1, latest_img_id)
-        if current_img_id >= 500:
+        # latest_img_id = tp.get_latest_img_id()
+        current_img_id = preds[-1].img_id
+
+        # current_img_id = min(current_img_id+1, latest_img_id)
+        if current_img_id >= 2000:
             break
 
     t = np.array([pred.img_time for pred in preds])
