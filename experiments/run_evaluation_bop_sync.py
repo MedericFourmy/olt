@@ -71,7 +71,7 @@ sidmax = all_sids[-1]
 
 all_sids = [all_sids[1]]
 
-all_results = []
+all_bop19_results = []
 
 for sid in all_sids:
     # # HACK: run only first scene
@@ -120,7 +120,7 @@ for sid in all_sids:
             if USE_GT_FOR_LOCALIZATION:
                 poses = reader.predict_gt(sid=sid, vid=vid)
             else:
-                poses = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=6)
+                poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=6)
             tracker.detected_bodies(poses)
             dt_localize += time.perf_counter() - t
             print('Localise (ms)', 1000*dt_localize)
@@ -148,7 +148,7 @@ for sid in all_sids:
         dt = dt_localize + dt_track
         if reader.check_if_in_bop19_targets(sid, vid):
             for obj_name, TCO in tracker_preds.items():
-                append_result(all_results, sid, obj_name2id(obj_name), vid, score, TCO, dt)
+                append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt)
 
         
 
@@ -161,7 +161,7 @@ EVALUATIONS_DIR_NAME.mkdir(exist_ok=True)
 
 # bop result file name stricly formatted:<method>_<ds_name>-<split>.csv
 result_bop_eval_filename = 'tracker_ycbv-test.csv'
-inout.save_bop_results(f'{RESULTS_DIR_NAME.as_posix()}/{result_bop_eval_filename}', all_results)
+inout.save_bop_results(f'{RESULTS_DIR_NAME.as_posix()}/{result_bop_eval_filename}', all_bop19_results)
 run_bop_evaluation(result_bop_eval_filename, RESULTS_DIR_NAME, EVALUATIONS_DIR_NAME)
 
 vid_name = f'result_{eval_cfg.ds_name}_{sid}.mp4'

@@ -67,6 +67,8 @@ class ContinuousTracker:
 
         # start multiprocess tracking
         local_tracker_args = deepcopy(tracker_args)
+        local_tracker_args[2].viewer_display = False
+        local_tracker_args[2].viewer_save = False
         local_tracker_args[2].tmp_dir_name += "2"
 
         K, _, _ = intrinsics2Kres(**rgb_intrinsics)
@@ -91,8 +93,14 @@ class ContinuousTracker:
         self.p.join()
 
     def _update_main_tracker_from_localizer(self):
-        object_poses, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
-        self.main_tracker.detected_bodies(object_poses)
+        # poses propagated from last detections + scores from last localization
+        object_poses, scores, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
+        # print('_update_main_tracker_from_localizer')
+        # print(scores)
+        # print('poses  ', object_poses.keys())
+        # print('scores ', scores.keys())
+        # print('  OFF')
+        self.main_tracker.detected_bodies(object_poses, scores)
         if self.collect_statistics:
             if self._stats_last_update_from_localizer is not None:
                 self._stats_localizer_freq = 1.0 / (
@@ -112,6 +120,7 @@ class ContinuousTracker:
     ) -> dict[str, np.ndarray]:
         """Evaluate on the given image, if ground_truth_localizer is used, we need sid
         and vid as well."""
+
 
         if not self._initialized:
             print('Warming up CosyPose')
@@ -156,11 +165,14 @@ class ContinuousTracker:
             if img is None:
                 return
 
+            scores_loca = None
             if object_poses is None:
-                object_poses = localizer.predict(img, **localizer_predict_kwargs)
+                object_poses, scores_loca = localizer.predict(img, **localizer_predict_kwargs)
             if fake_localization_delay > 0.0:
                 time.sleep(fake_localization_delay)
-            tracker.detected_bodies(object_poses)
+
+            # reset from scratch with all new detections
+            tracker.detected_bodies(object_poses, None)
             tracker.set_image(img, depth)
             tracker.track()
 
@@ -174,6 +186,11 @@ class ContinuousTracker:
                 tracker.set_image(img, depth)
                 tracker.track()
 
+            # return poses from tracker and scores from localizer detections
+            poses, _ = tracker.get_current_preds() 
+
+            # remove poses that do not have satisfactory
+
             queue_poses_initialization.put(
-                (tracker.get_current_preds(), sid0, vid0, sid, vid)
+                (poses, scores_loca, sid0, vid0, sid, vid)
             )

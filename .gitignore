@@ -1,7 +1,13 @@
-tmp/
+.vscode
+tmp*/
 __pycache__/
 
 dist
 *.pyc
 *.png
 *.log
+*.pdf
+*.pkl
+
+evaluations/
+results/

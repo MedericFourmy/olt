@@ -584,7 +584,7 @@ class LocalizerActor(Actor):
                 if not message.has_id():
                     # do prediction on image and return result, e.g. for warmup
                     logging.info("performing (warmup) prediction.")
-                    poses = self.predict(message.img)
+                    poses, scores = self.predict(message.img)
                     # message.poses_cosy = poses
                     self.send(sender ,poses)
                     return
@@ -592,7 +592,7 @@ class LocalizerActor(Actor):
                 assert message.has_id()
                 if message.img_id > self.last_img_id:
                     logging.info(f"Starting prediction for img_id {message.img_id}.")
-                    poses = self.predict(message.img)
+                    poses, scores = self.predict(message.img)
                     self.last_img_id = message.img_id
                     message.poses_cosy = poses
                     message.cosy_base_id = message.img_id

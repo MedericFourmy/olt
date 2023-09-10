@@ -27,7 +27,7 @@ K, height, width = reader.get_Kres(sid, vid)
 obs = reader.get_obs(sid, vid)
 
 # Warmup
-poses = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=N_REFINER)
+poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=N_REFINER)
 
 
 N_run = 2000
@@ -38,7 +38,7 @@ for i in range(N_run):
 
     print(f'{i}/{N_run}')
     t = time.perf_counter()
-    poses = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=N_REFINER)
+    poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=N_REFINER)
     # print(poses)
     dt = 1000*(time.perf_counter() - t)
     dt_lst.append(dt)
