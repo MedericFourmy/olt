@@ -42,14 +42,14 @@ def test_obj_in_img():
     lcfg.n_workers = 2
     localizer = Localizer(DS_NAME, lcfg)
 
-    poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
+    poses, scores = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
 
     assert 'obj_000006' in poses.keys()
     print("objects are detected")
 
     rgb[:] = 42
     try:
-        poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
+        poses, scores = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
     except AttributeError as e:
         poses = {}
         print(e)

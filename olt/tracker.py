@@ -54,7 +54,7 @@ class Tracker:
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
 
-        self.active_tracks = []
+        self.active_tracks = {}
 
         self.image_set = False
 
@@ -68,6 +68,10 @@ class Tracker:
         self.imgs_dir.mkdir(parents=True)
         assert(self.obj_model_dir.exists())
 
+
+        # Main class
+        self.tracker = pyicg.Tracker('tracker', synchronize_cameras=False)
+        
         # Renderer for preprocessing
         self.renderer_geometry = pyicg.RendererGeometry('renderer geometry')
 
@@ -82,26 +86,26 @@ class Tracker:
             self.depth_camera.camera2world_pose = self.color_camera.depth2color_pose  # world shifted by depth2color transformation
             self.depth_camera.intrinsics = pyicg.Intrinsics(**self.depth_intrinsics)
 
-        # Viewers
-        self.color_viewer = pyicg.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
-        if self.cfg.viewer_save:
-            self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
-        self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
-        self.color_viewer.display_images = self.cfg.viewer_display
-
-        if self.cfg.use_depth:
-            depth_viewer = pyicg.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
+        if self.cfg.viewer_display or self.cfg.viewer_save:
+            #########################################
+            # Viewers
+            self.color_viewer = pyicg.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
             if self.cfg.viewer_save:
-                depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
-            depth_viewer.display_images = self.cfg.viewer_display
+                self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
+            self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
+            self.color_viewer.display_images = self.cfg.viewer_display
 
+            if self.cfg.use_depth:
+                depth_viewer = pyicg.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
+                if self.cfg.viewer_save:
+                    depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
+                depth_viewer.display_images = self.cfg.viewer_display
 
-        # Main class
-        self.tracker = pyicg.Tracker('tracker', synchronize_cameras=False)
-        self.tracker.AddViewer(self.color_viewer)
-        display_depth = True
-        if self.cfg.use_depth and display_depth:
-            self.tracker.AddViewer(depth_viewer)
+            self.tracker.AddViewer(self.color_viewer)
+            display_depth = True
+            if self.cfg.use_depth and display_depth:
+                self.tracker.AddViewer(depth_viewer)
+            #########################################
 
         # bodies: create 1 for each object model with body names = body ids
         self.bodies, self.object_files = self.create_bodies(self.obj_model_dir, self.accepted_objs, self.geometry_unit_in_meter_ycbv_urdf)
@@ -162,11 +166,12 @@ class Tracker:
 
         self.iteration = 0
 
-    def set_all_bodies_behind_camera(self):
-        T_bc = np.eye(4)
-        T_bc[2,3] = -100
-        for body in self.bodies.values():
-            body.body2world_pose = T_bc
+    def set_all_bodies_behind_camera(self, except_object_names=None):
+        T_bc_back = np.eye(4)
+        T_bc_back[2,3] = -100
+        for object_name, body in self.bodies.items():
+            if except_object_names is None or object_name not in except_object_names:
+                body.body2world_pose = T_bc_back
 
     def create_bodies(self, 
                     object_model_dir: Path, 
@@ -201,7 +206,7 @@ class Tracker:
 
         return bodies, object_files
 
-    def detected_bodies(self, detections: dict[str, np.array]):
+    def detected_bodies(self, detections: dict[str, np.array], scores=None):
         """
         detections: list of object id,pose pairs coming from a pose estimator like happy pose
         Multiple objects of the sane
@@ -214,23 +219,56 @@ class Tracker:
 
         FOR NOW: assume unique objects and reinitialize there pose
         """
-
+        # print('detections:', detections)
+        # print('scores:', scores)
 
         # Implementation 1: just update the current estimates, 1 object per cat
+
+        # Init or scores are None -> update all without rules
+        # if len(self.active_tracks) == 0 or scores is None:
         self.set_all_bodies_behind_camera()
-
-        self.active_tracks = []
+        self.active_tracks = {}
         for obj_name, T_co in detections.items():
-            self.active_tracks.append(obj_name)
-            if isinstance(T_co, pyicg.Body):
-                self.bodies[obj_name].body2world_pose = T_co.body2world_pose
-            elif isinstance(T_co, np.ndarray):
-                assert T_co.shape == (4,4)
-                self.bodies[obj_name].body2world_pose = T_co
-            else:
-                raise ValueError(f"Expected homogenous transformation or pyicg bodies, but got {type(T_co)}")
+            if obj_name not in self.bodies:
+                continue 
+            
+            score = scores[obj_name] if scores is not None else 1.0
+            self.active_tracks[obj_name] = score
+            self.bodies[obj_name].body2world_pose = T_co
 
-        # Implementation 2: matching (if multiple instances of same object)
+        # # Implementation 2: more logic to reject bad detections if tracks are good enough
+        # else:
+        #     THRESH = 0.0
+        #     MIN_SCORE_ACTIVE_TRACKS = 0.0
+
+        #     # compare new detections score with active tracks score: 
+        #     # if score lower by THRESH to previous det, do not take into account 
+        #     object_to_remove_from_tracks_if_present = set(self.bodies.keys())
+
+        #     for obj_name, T_co in detections.items():
+        #         if obj_name not in self.bodies:
+        #             continue 
+
+        #         score = scores[obj_name] if scores is not None else 1.0
+        #         if obj_name not in self.active_tracks:
+        #             if score > MIN_SCORE_ACTIVE_TRACKS:
+        #                 self.active_tracks[obj_name] = score
+        #                 self.bodies[obj_name].body2world_pose = T_co
+        #                 object_to_remove_from_tracks_if_present.remove(obj_name)
+                
+        #         elif score > self.active_tracks[obj_name] - THRESH:
+        #             # score needs to be good enough with respect to 
+        #             # previously recorded score for an update to happen
+        #             self.active_tracks[obj_name] = score
+        #             self.bodies[obj_name].body2world_pose = T_co
+        #             object_to_remove_from_tracks_if_present.remove(obj_name)
+
+        #     for obj_name in object_to_remove_from_tracks_if_present:
+        #         if obj_name in self.active_tracks:
+        #             del self.active_tracks[obj_name]
+
+
+        
         
     def update_K(self, K, width, height):
         """
@@ -289,9 +327,9 @@ class Tracker:
 
     def get_current_preds(self):
         preds = {}
-        for obj_name in self.active_tracks:
+        for obj_name in self.active_tracks.keys():
             preds[obj_name] = self.bodies[obj_name].body2world_pose
 
-        return preds
+        return preds, self.active_tracks
 
 
