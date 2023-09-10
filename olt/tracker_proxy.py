@@ -61,8 +61,8 @@ class MultiTrackerProxy(object):
             return img_id
         raise TimeoutError(f"We should not get this message {img_id}. Could be a timing issue.")
 
-    def feed_image(self, req: (TrackerRequest, np.ndarray)) -> int:
-        old_img_id = self.get_latest_img_id()
+    def feed_image(self, req: (TrackerRequest, np.ndarray), block=False) -> int:
+        # old_img_id = self.get_latest_img_id()
 
         
         if isinstance(req, np.ndarray):
@@ -70,15 +70,26 @@ class MultiTrackerProxy(object):
 
         assert isinstance(req, TrackerRequest)
         assert req.has_image()
-        assert not req.has_id()
+        # assert not req.has_id()
         self.system.tell(self.image_buffer, req)
-        img_id = self.system.ask(self.image_buffer, "latest_image_id", 0.2)
-        assert img_id > old_img_id
-        assert isinstance(img_id, int)
-        return img_id
+        if block:
+            img_id = self.system.ask(self.image_buffer, "latest_image_id", 1.0)
+        # assert img_id > old_img_id
+        # assert isinstance(img_id, int)
+        # return img_id
+        return
 
-    def get_latest_available_estimate(self):
-        result = self.system.ask(self.result_logger, "latest_estimate")
+    def get_latest_available_estimate(self, wait_for_valid_res=False):
+        if not wait_for_valid_res:
+            return self.system.ask(self.result_logger, "latest_estimate")
+        
+        # poll the system until a TrackerRequest object is returned.
+        result = None
+        while result is None:
+            result = self.system.ask(self.result_logger, "latest_estimate", 100.0)
+            if result is not None:
+                break
+            time.sleep(0.0005)
         # assert isinstance(result, TrackerRequest)
         return result
     

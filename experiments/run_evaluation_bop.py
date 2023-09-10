@@ -5,13 +5,17 @@
 See https://bop.felk.cvut.cz/challenges/bop-challenge-2019/#howtoparticipate
 """
 
+from olt.actor_tracker import TrackerRequest
+from olt.tracker_proxy import MultiTrackerProxy
+
+
 if __name__ == '__main__':
 
     import time
     from pathlib import Path
 
-    from olt.localizer import Localizer
-    from olt.continuous_tracker import ContinuousTracker
+    # from olt.localizer import Localizer
+    # from olt.continuous_tracker import ContinuousTracker
     from olt.evaluation_tools import BOPDatasetReader, append_result, run_bop_evaluation
     from olt.config import OBJ_MODEL_DIRS, EvaluationBOPConfig
     from olt.utils import create_video_from_images, obj_name2id, obj_label2name, intrinsics2Kres, get_method_name
@@ -86,8 +90,8 @@ if __name__ == '__main__':
     all_bop19_results = []
 
     # METHOD = 'cosyonly'
-    METHOD = 'threaded'
-    # METHOD = 'YOURMETHOD'
+    # METHOD = 'threaded'
+    METHOD = 'YOURMETHOD'
 
     # NAMING EXPERIMENTS
     modality = 'rgbd' if USE_DEPTH else 'rgb'
@@ -113,6 +117,8 @@ if __name__ == '__main__':
                                    f'{IMG_FREQ}Hz',
                                    modality
                                     )
+        rate = Rate(IMG_FREQ)
+
     else:
         raise ValueError(f'Method {METHOD} not defined')
     ##############################################################
@@ -152,13 +158,14 @@ if __name__ == '__main__':
                 localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
 
             elif METHOD == 'YOURMETHOD':
-                raise NotImplementedError(METHOD+' not implemented')
-                # HERE init+warmup code
+                tp = MultiTrackerProxy()
+                poses = tp.warmup_localizer()
+
             else:
                 raise NotImplementedError(METHOD+' not implemented')
 
 
-            # Preload observation for the scene as the is a bit I/O costly
+            # Preload observation for the scene as there is a bit I/O overhead
             observations = [reader.get_obs(sid, vid) for vid in vids]
 
             N_views = len(vids)
@@ -210,7 +217,39 @@ if __name__ == '__main__':
                             append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt_method)
 
                 elif METHOD == 'YOURMETHOD':
-                    raise NotImplementedError('HERE implement prediction and call append_result if check_if_in_bop19_targets returns true')
+                    obs = observations[i]
+                    t = time.perf_counter()
+                    # depth = obs.depth if USE_DEPTH else None
+                    # object_poses = reader.predict_gt(sid, vid) if USE_GT_FOR_LOCALIZATION else None
+
+                    tp.feed_image(TrackerRequest(img=obs.rgb, img_id=i), block=(i==0))
+                    
+                    # img_id = tp.system.ask(tp.image_buffer, "latest_image_id", 0.2)
+
+                    if i == 0:
+                        tp._trigger_localizer_polling()
+
+                    while True:
+                        res = tp.get_latest_available_estimate(wait_for_valid_res=True)
+                        assert isinstance(res, TrackerRequest)
+                        if res.img_id >= i:
+                            break
+
+                    preds = res.poses_result
+
+                    # scene_id, obj_id, view_id, score, TCO, dt
+                    dt_method = time.perf_counter() - t
+                    scores = None
+                    for obj_name, TCO in preds.items():
+                        score = scores[obj_name] if scores is not None else 1.0
+                        # print('  obj_name, score: ', obj_name, score)
+                    if reader.check_if_in_bop19_targets(sid, vid):
+                        for obj_name, TCO in preds.items():
+                            score = scores[obj_name] if scores is not None else 1.0
+                            # print('  obj_name, score: ', obj_name, score)
+                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt_method)
+
+                    rate.sleep()
 
 
                 if i % PRINT_INFO_EVERY == 0:
@@ -221,6 +260,10 @@ if __name__ == '__main__':
             if METHOD == 'threaded':
                 # Terminate localizer subprocess
                 continuous_tracker.finish()
+
+            if METHOD == 'YOURMETHOD':
+                # Terminate localizer subprocess
+                tp.shutdown()
 
 
 

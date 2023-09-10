@@ -561,7 +561,12 @@ class LocalizerActor(Actor):
         VIEW_ID = 1
 
         lcfg = LocalizerConfig
-        lcfg.n_workers = 2
+        # lcfg.n_workers = 2
+
+        lcfg.renderer_name = 'bullet'  # higher AR, bit slower
+        lcfg.training_type = 'synt+real'
+        lcfg.n_workers = 0
+
 
         self.localizer = Localizer(DS_NAME, lcfg)
 
@@ -778,13 +783,15 @@ class TrackerActor(Actor):
                 self.tracker.set_image(message.img)
                 self.tracker.track()
                 self.last_img_id = message.img_id
-                # message.poses_result = self.tracker.bodies
+
+                # add tracking results to message
                 message.poses_result = {}
-                for name, body_trans in self.tracker.get_current_preds().items():
-                    assert body_trans.shape == (4,4)
-                    # assert isinstance(body, Body)
-                    message.poses_result[name] = body_trans
-                # self.tracker.update_viewers()
+                preds, active_tracks  = self.tracker.get_current_preds()
+                for name, body_trans in preds.items():
+                    if name in active_tracks:
+                        assert body_trans.shape == (4,4)
+                        message.poses_result[name] = body_trans
+
                 logging.info(f"Tracking on image {message.img_id} complete.")
                 if self.STRIP_IMAGE:
                     message.img = None
