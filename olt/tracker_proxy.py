@@ -100,7 +100,7 @@ class MultiTrackerProxy(object):
         remaining_timeout = deadline - time.time()
         req.timeout = remaining_timeout - message_delivery_time
         result = self.system.ask(self.result_logger, req, remaining_timeout)
-        if result is None and timeout_policy is not "none":
+        if result is None and timeout_policy != "none":
             raise TimeoutError()    
         return result
 
@@ -234,7 +234,7 @@ class TrackerProxy(object):
         remaining_timeout = deadline - time.time()
         req.timeout = remaining_timeout - message_delivery_time
         result = self.system.ask(self.result_logger, req, remaining_timeout)
-        if result is None and timeout_policy is not "none":
+        if result is None and timeout_policy != "none":
             raise TimeoutError()    
         return result
 

@@ -78,6 +78,8 @@ def loc_system():
 
 def test_localizer_warmup(benchmark):
     system = ActorSystem('multiprocTCPBase', logDefs=logcfg)
+    # system = ActorSystem(logDefs=logcfg)
+
 
     localizer = system.createActor(LocalizerActor)
 
@@ -130,6 +132,13 @@ def test_localizer_performance(benchmark, loc_system):
     assert isinstance(poses, dict)
     assert len(poses.keys()) > 0
     assert all([pose.shape == (4,4) for pose in poses.values()])
+
+def test_class_to_str():
+    s = str(type(TrackerRequest()))
+    s = s.split(".")[-1].removesuffix("'>")
+    assert s == "TrackerRequest"
+
+    
 
 
 

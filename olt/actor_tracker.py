@@ -26,7 +26,10 @@ class ProcessStats(object):
 
 
 def get_name(cl, dt):
-    s = f"{dt}_{}.profile"
+
+    class_str = str(cl).split(".")[-1]
+    s = f"{dt:010d}_{cl}.profile"
+    return s
 
 
 def measure_load(func):
