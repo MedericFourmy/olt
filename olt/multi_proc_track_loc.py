@@ -247,7 +247,7 @@ class MultiProcessTracker(object):
                 continue
 
             ### do tracking ###
-            poses = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
+            poses, scores = localizer.predict(rgb, K, n_coarse=1, n_refiner=3)
 
             res_time = time.time()
 

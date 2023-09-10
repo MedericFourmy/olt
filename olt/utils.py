@@ -77,6 +77,12 @@ Output: obj_id
 def obj_id2name(obj_id):
     return f'obj_{obj_id:06}'
 
+"""
+Naming experiments:
+{rootname}-arg1-arg2-...-argn
+"""
+def get_method_name(rootname, *args):
+    return '-'.join([rootname]+[str(a) for a in args])
 
 
 def create_video_from_images(img_dir: Path, vid_name='out.mp4', ext: str ='.png', fps: int = 30.0):

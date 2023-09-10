@@ -1,3 +1,5 @@
+import numpy as pin
+import numpy as np
 import torch
 
 from happypose.toolbox.inference.types import ObservationTensor
@@ -8,7 +10,9 @@ from olt.config import LocalizerConfig
 from olt.utils import obj_label2name
 
 
-
+def dist_objects(T1, T2):
+    # return np.linalg.norm(T1[:3,3] - T2[:3,3])
+    return np.linalg.norm(T1[:3,3] - T2[:3,3])
 
 
 class Localizer:
@@ -19,12 +23,18 @@ class Localizer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         # Cosypose
-        cosy_wrapper = CosyPoseWrapper(dataset_name=self.obj_dataset, n_workers=cfg.n_workers, renderer_name=cfg.renderer_name)
+        cosy_wrapper = CosyPoseWrapper(dataset_name=self.obj_dataset, 
+                                       n_workers=cfg.n_workers, 
+                                       renderer_name=cfg.renderer_name,
+                                       training_type=cfg.training_type)
         self.pose_estimator = cosy_wrapper.pose_predictor
 
         # Megapose (TODO)
 
-    def predict(self, rgb, K, n_coarse=1, n_refiner=3):
+
+    def get_cosy_predictions(self, rgb, K, n_coarse=None, n_refiner=None):
+        n_coarse = self.cfg.n_coarse if n_coarse is None else n_coarse
+        n_refiner = self.cfg.n_refiner if n_refiner is None else n_refiner
         observation = ObservationTensor.from_numpy(rgb, None, K)
         if self.device.type == 'cuda':
             observation.cuda()
@@ -33,7 +43,7 @@ class Localizer:
         # -> obj_000010 == banana
         # Exception handling: if no object detected in the image, cosypose currently throws an AttributeError error
         try:
-            predictions, _ = self.pose_estimator.run_inference_pipeline(observation,
+            data_TCO, extra_data = self.pose_estimator.run_inference_pipeline(observation,
                                                                         run_detector=True,
                                                                         n_coarse_iterations=n_coarse, 
                                                                         n_refiner_iterations=n_refiner,
@@ -41,13 +51,52 @@ class Localizer:
         except AttributeError as e:
             return {}
 
+        return data_TCO, extra_data
+
+    def predict(self, rgb, K, n_coarse=None, n_refiner=None):
+
+        data_TCO, extra_data = self.get_cosy_predictions(rgb, K, n_coarse=None, n_refiner=None)
+
         # Send all poses to cpu to be able to process them
-        poses = predictions.poses.cpu()
+        poses = data_TCO.poses.cpu()
 
         preds = {}
-        for i in range(len(predictions)):
-            obj_label = predictions.infos['label'][i]
+        scores = {}
+        # returns best detection of each image type 
+        # EXCEPT those are the ycbv clamps
+        # clamps_obj_name = ['obj_000019', 'obj_000020']
+        # MIN_DIST = 0.0
+
+        # get indexes sorted by decreasing scores
+        score_list = list(data_TCO.infos['score'])
+        scores_decreasing_indexes = sorted(range(len(score_list)), key=lambda k: score_list[k], reverse=True)
+        for i in scores_decreasing_indexes:
+            obj_label = data_TCO.infos['label'][i]
             obj_name = obj_label2name(obj_label, 'ycbv')
-            preds[obj_name] = poses[i].numpy() 
+            score = data_TCO.infos['score'][i]
+            # print(score)
+
+            # if obj_name in clamps_obj_name:
+            #     print('!!!! one_clamp_with_higher_score_already_detected')
+            #     clamps_already_detected = [name for name in preds if name in clamps_obj_name]
+            #     if len(clamps_already_detected) > 0: 
+            #         dist = dist_objects(poses[i].numpy(), preds[clamps_already_detected[0]])
+            #         print('dist:', dist)
+            #         if dist < MIN_DIST:
+            #             print('REMOVE!!!!!!!', clamps_already_detected[0])
+            #             continue
+
+
+            # if obj_name in scores:
+            #     print(obj_name)
+            #     if score > scores[obj_name]:
+
+            #         scores[obj_name] = score
+            #         preds[obj_name] = poses[i].numpy()
+
+            if obj_name not in scores:
+                scores[obj_name] = score
+                preds[obj_name] = poses[i].numpy()
         
-        return preds
+        assert len(preds) == len(scores)
+        return preds, scores

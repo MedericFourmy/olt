@@ -26,9 +26,9 @@ class ProcessStats(object):
 
 
 def get_name(cl, dt):
-
-    class_str = str(cl).split(".")[-1]
-    s = f"{dt:010d}_{cl}.profile"
+    dt = int(dt*1000000) # to ns
+    class_str = str(cl).split(".")[-1].removesuffix("'>")
+    s = f"{dt:010d}_{class_str}.profile"
     return s
 
 
@@ -71,6 +71,7 @@ def measure_load(func):
 @dataclass
 class TrackerRequest(object):
     img: np.ndarray = None
+    depth: np.ndarray = None
     img_id: int = -1
     img_time: float = -1.0
     poses_cosy: dict = field(default_factory=dict)
@@ -608,7 +609,7 @@ class LocalizerActor(Actor):
                 if not message.has_id():
                     # do prediction on image and return result, e.g. for warmup
                     logging.info("performing (warmup) prediction.")
-                    poses = self.predict(message.img)
+                    poses, scores = self.predict(message.img)
                     # message.poses_cosy = poses
                     self.send(sender ,poses)
                     return
@@ -616,7 +617,7 @@ class LocalizerActor(Actor):
                 assert message.has_id()
                 if message.img_id > self.last_img_id:
                     logging.info(f"Starting prediction for img_id {message.img_id}.")
-                    poses = self.predict(message.img)
+                    poses, scores = self.predict(message.img)
                     self.last_img_id = message.img_id
                     message.poses_cosy = poses
                     message.cosy_base_id = message.img_id
@@ -651,7 +652,7 @@ class TrackerManager(Actor):
         self.trackers = []
             
         self.last_tracker = 0
-        self.num_trackers = 2
+        self.num_trackers = 3
      
         super().__init__(*args, **kwargs)
 
@@ -689,6 +690,8 @@ class TrackerActor(Actor):
 
         self.STRIP_IMAGE = True
         self.POLLING = True
+        self.ADVANCED_POLLING = False
+
 
         DS_NAME = 'ycbv'
         SCENE_ID = 48
@@ -731,27 +734,47 @@ class TrackerActor(Actor):
         if isinstance(message, TrackerRequest):
             logging.info(f"will perform tracking on image {message.img_id}.")
             if message.has_cosy_base_id():
+                # Either this image was run through Localizer actor
+
                 # tracker is on new track of images
                 logging.info(f"Tracker is on cosy_base_id track {message.cosy_base_id}.")
                 self.cosy_base_id = message.cosy_base_id
-                assert message.img_id >= message.cosy_base_id
+                assert message.img_id == message.cosy_base_id
+                # assert message.img_id >= message.cosy_base_id
             elif self.last_img_id+1 != message.img_id:
-                logging.info(f"Tracker ignores image {message.img_id}, because it is on another track.")
+                logging.info(f"Tracker ignores image {message.img_id}, because it is on another track ({self.cosy_base_id}).")
                 return
+            else:
+                # if message came from ImageBuffer, it has no cosy id yet
+                message.cosy_base_id = self.cosy_base_id
             if message.has_poses_cosy():
                 self.tracker.detected_bodies(message.poses_cosy)
+
+                if self.ADVANCED_POLLING:
+                    self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+1))
+                    self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+2))
+                    self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+3))
+
             elif message.has_poses_tracker():
+                logging.error('!!!!!!!!!!!!!!!!!!!!!! message.has_poses_tracker() should not be True')
                 # message.poses_tracker contains poses from the prev time
                 # if images in order, the bodies need no update
                 # update only bodies that are avialable
                 self.tracker.detected_bodies(message.poses_tracker)
+                
             if not message.has_poses_cosy() and not message.has_poses_tracker():
                 # the message must be consecutive!
                 assert message.img_id == self.last_img_id + 1
+
             if message.has_image():
                 if self.POLLING:
                     logging.info(f"Tracker is polling for img {message.img_id+1} on cosy_base_id track {self.cosy_base_id}.")
-                    self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+1))
+                    
+                    if self.ADVANCED_POLLING:
+                        self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+4))
+                    else:
+                        self.send(self.image_buffer, TrackerRequest(img_id=message.img_id+1))
+
                 self.tracker.set_image(message.img)
                 self.tracker.track()
                 self.last_img_id = message.img_id
