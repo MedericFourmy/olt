@@ -65,7 +65,7 @@ if __name__ == '__main__':
     # eval_cfg.tracker_cfg.depth_standard_deviations = [0.0, 0.0, 0.0]
     # eval_cfg.tracker_cfg.depth_standard_deviations = [0.05, 0.03, 0.02]
 
-    eval_cfg.localizer_cfg.detector_threshold = 0.1
+    eval_cfg.localizer_cfg.detector_threshold = 0.1  # low threshold -> high AR but lower precision
     eval_cfg.localizer_cfg.n_coarse = 1
     eval_cfg.localizer_cfg.n_refiner = 4
     # eval_cfg.localizer_cfg.renderer_name = 'panda'  # faster but from time to time very high runtime
@@ -87,16 +87,17 @@ if __name__ == '__main__':
 
     # METHOD = 'cosyonly'
     METHOD = 'threaded'
+    # METHOD = 'YOURMETHOD'
 
     # NAMING EXPERIMENTS
     modality = 'rgbd' if USE_DEPTH else 'rgb'
-    # COSYPOSE_ONLY = True
     if METHOD == 'threaded':
         run_name = get_method_name(METHOD, 
-                                      eval_cfg.localizer_cfg.training_type,
-                                      eval_cfg.localizer_cfg.renderer_name,
-                                      f'{IMG_FREQ}Hz',
-                                      modality)
+                                   eval_cfg.localizer_cfg.training_type,
+                                   eval_cfg.localizer_cfg.renderer_name,
+                                   f'{IMG_FREQ}Hz',
+                                   modality
+                                   )
         rate = Rate(IMG_FREQ)
 
     elif METHOD == 'cosyonly':
@@ -104,6 +105,16 @@ if __name__ == '__main__':
                                     eval_cfg.localizer_cfg.training_type, 
                                     eval_cfg.localizer_cfg.renderer_name, 
                                     f'nr{eval_cfg.localizer_cfg.n_refiner}')
+    
+    elif METHOD == 'YOURMETHOD':
+        run_name = get_method_name(METHOD, 
+                                   eval_cfg.localizer_cfg.training_type,
+                                   eval_cfg.localizer_cfg.renderer_name,
+                                   f'{IMG_FREQ}Hz',
+                                   modality
+                                    )
+    else:
+        raise ValueError(f'Method {METHOD} not defined')
     ##############################################################
 
     if RUN_INFERENCE:
@@ -140,9 +151,15 @@ if __name__ == '__main__':
                 # Warmup
                 localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
 
+            elif METHOD == 'YOURMETHOD':
+                raise NotImplementedError(METHOD+' not implemented')
+                # HERE init+warmup code
+            else:
+                raise NotImplementedError(METHOD+' not implemented')
+
 
             # Preload observation for the scene as the is a bit I/O costly
-            # observations = [reader.get_obs(sid, vid) for vid in vids]
+            observations = [reader.get_obs(sid, vid) for vid in vids]
 
             N_views = len(vids)
             dt_method = 0.0
@@ -155,7 +172,7 @@ if __name__ == '__main__':
                     break
                 
                 if METHOD == 'threaded':
-                    obs = reader.get_obs(sid, vid)
+                    obs = observations[i]
                     t = time.perf_counter()
                     depth = obs.depth if USE_DEPTH else None
                     object_poses = reader.predict_gt(sid, vid) if USE_GT_FOR_LOCALIZATION else None
@@ -177,7 +194,7 @@ if __name__ == '__main__':
 
                 elif METHOD == 'cosyonly':
                     if reader.check_if_in_bop19_targets(sid, vid):
-                        obs = reader.get_obs(sid, vid)
+                        obs = observations[i]
                         t = time.perf_counter()
                         # preds, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
                         data_TCO, extra_data = localizer.get_cosy_predictions(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
@@ -191,6 +208,10 @@ if __name__ == '__main__':
                             TCO = poses[k].numpy()
 
                             append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt_method)
+
+                elif METHOD == 'YOURMETHOD':
+                    raise NotImplementedError('HERE implement prediction and call append_result if check_if_in_bop19_targets returns true')
+
 
                 if i % PRINT_INFO_EVERY == 0:
                     print(f'Scene: {sid}/{sidmax}, View: {vid}/{vids[-1]}')
