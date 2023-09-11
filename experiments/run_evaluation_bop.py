@@ -11,12 +11,21 @@ from olt.tracker_proxy import MultiTrackerProxy
 
 if __name__ == '__main__':
 
+    # METHOD = 'cosyonly'  # Run only cosypose on the bop19 targets
+    # METHOD = 'threaded'  # Run continuous implementation of olt 
+    # METHOD = 'cosyrefined' # Run cosypose + refinement of ICG 
+    METHOD = 'ActorSystem'
+
+    # METHOD = 'only_tracker_init' # When init() has to create new .bin files, a multiprocessing error may happen 
+
+
     import time
     from pathlib import Path
     import numpy as np
-    from olt.localizer import Localizer
-    from olt.tracker import Tracker
-    from olt.continuous_tracker import ContinuousTracker
+    if METHOD != "ActorSystem":
+        from olt.localizer import Localizer
+        from olt.tracker import Tracker
+        from olt.continuous_tracker import ContinuousTracker
     from olt.evaluation_tools import BOPDatasetReader, append_result, run_bop_evaluation
     from olt.config import OBJ_MODEL_DIRS, EvaluationBOPConfig
     from olt.utils import create_video_from_images, obj_name2id, obj_label2name, intrinsics2Kres, get_method_name
@@ -24,6 +33,11 @@ if __name__ == '__main__':
 
     from bop_toolkit_lib import inout  # noqa
 
+    # ActorSystem options:
+    PRECHARGE = True
+
+
+    # general options
     RUN_INFERENCE = True
     RUN_EVALUATION = True
 
@@ -41,11 +55,11 @@ if __name__ == '__main__':
     FAKE_LOCALIZATION_DELAY = 0.0
     # IMG_FREQ = 5
     # IMG_FREQ = 10
-    # IMG_FREQ = 15
+    IMG_FREQ = 15
     # IMG_FREQ = 20
     # IMG_FREQ = 30
     # IMG_FREQ = 60
-    IMG_FREQ = 90
+    # IMG_FREQ = 90
 
     eval_cfg = EvaluationBOPConfig() 
     eval_cfg.ds_name = 'ycbv'
@@ -95,12 +109,6 @@ if __name__ == '__main__':
 
     all_bop19_results = []
 
-    # METHOD = 'cosyonly'  # Run only cosypose on the bop19 targets
-    METHOD = 'threaded'  # Run continuous implementation of olt 
-    # METHOD = 'cosyrefined' # Run cosypose + refinement of ICG 
-    # METHOD = 'YOURMETHOD'
-
-    # METHOD = 'only_tracker_init' # When init() has to create new .bin files, a multiprocessing error may happen 
 
     # NAMING EXPERIMENTS
     # !!!!! name should NOT contain '_' characters
@@ -128,13 +136,15 @@ if __name__ == '__main__':
                                     eval_cfg.localizer_cfg.renderer_name, 
                                     f'nr{eval_cfg.localizer_cfg.n_refiner}')
     
-    elif METHOD == 'YOURMETHOD':
+    elif METHOD == 'ActorSystem':
         run_name = get_method_name(METHOD, 
                                    eval_cfg.localizer_cfg.training_type,
                                    eval_cfg.localizer_cfg.renderer_name,
                                    f'{IMG_FREQ}Hz',
                                    modality
                                     )
+        rate = Rate(IMG_FREQ)
+
         
 
     elif METHOD == 'only_tracker_init':
@@ -198,9 +208,14 @@ if __name__ == '__main__':
                 # Warmup
                 localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
 
-            elif METHOD == 'YOURMETHOD':
+            elif METHOD == 'ActorSystem':
                 tp = MultiTrackerProxy()
                 poses = tp.warmup_localizer()
+
+                if PRECHARGE:
+                    req = TrackerRequest(obs.rgb, img_id=0)
+                    tp.feed_image(req=req, block=True)
+                    tp._trigger_localizer_polling()
 
             else:
                 raise NotImplementedError(METHOD+' not implemented')
@@ -270,18 +285,16 @@ if __name__ == '__main__':
                         for obj_name in poses:
                             append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, scores[obj_name], poses[obj_name], dt_method)
 
-                elif METHOD == 'YOURMETHOD':
+                elif METHOD == 'ActorSystem':
                     obs = observations[i]
                     t = time.perf_counter()
-                    # depth = obs.depth if USE_DEPTH else None
-                    # object_poses = reader.predict_gt(sid, vid) if USE_GT_FOR_LOCALIZATION else None
 
-                    tp.feed_image(TrackerRequest(img=obs.rgb, img_id=i), block=(i==0))
-                    
-                    # img_id = tp.system.ask(tp.image_buffer, "latest_image_id", 0.2)
-
-                    if i == 0:
+                    if i == 0 and not PRECHARGE:
+                        tp.feed_image(TrackerRequest(img=obs.rgb, img_id=i), block=(i==0))
                         tp._trigger_localizer_polling()
+                    else:
+                        tp.feed_image(TrackerRequest(img=obs.rgb, img_id=i), block=False)
+
 
                     while True:
                         res = tp.get_latest_available_estimate(wait_for_valid_res=True)
@@ -315,7 +328,7 @@ if __name__ == '__main__':
                 # Terminate localizer subprocess
                 continuous_tracker.finish()
 
-            if METHOD == 'YOURMETHOD':
+            if METHOD == 'ActorSystem':
                 # Terminate localizer subprocess
                 tp.shutdown()
 
