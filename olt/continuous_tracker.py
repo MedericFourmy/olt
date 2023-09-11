@@ -69,7 +69,7 @@ class ContinuousTracker:
         local_tracker_args = deepcopy(tracker_args)
         local_tracker_args[2].viewer_display = False
         local_tracker_args[2].viewer_save = False
-        local_tracker_args[2].tmp_dir_name += "2"
+        # local_tracker_args[2].tmp_dir_name += "2"
 
         K, _, _ = intrinsics2Kres(**rgb_intrinsics)
 
@@ -95,11 +95,6 @@ class ContinuousTracker:
     def _update_main_tracker_from_localizer(self):
         # poses propagated from last detections + scores from last localization
         object_poses, scores, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
-        # print('_update_main_tracker_from_localizer')
-        # print(scores)
-        # print('poses  ', object_poses.keys())
-        # print('scores ', scores.keys())
-        # print('  OFF')
         self.main_tracker.detected_bodies(object_poses, scores)
         if self.collect_statistics:
             if self._stats_last_update_from_localizer is not None:

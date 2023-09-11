@@ -118,10 +118,26 @@ class Tracker:
         self.optimizers = {}
         for bname, body in self.bodies.items():
             region_model_path = self.tmp_dir / (bname + '_region_model.bin')
-            self.region_models[bname] = pyicg.RegionModel(bname + '_region_model', body, region_model_path.as_posix())
+            rm = self.cfg.region_model
+            self.region_models[bname] = pyicg.RegionModel(bname + '_region_model', body, region_model_path.as_posix(),
+                                                          sphere_radius=rm.sphere_radius, 
+                                                          n_divides=rm.n_divides, 
+                                                          n_points=rm.n_points, 
+                                                          max_radius_depth_offset=rm.max_radius_depth_offset, 
+                                                          stride_depth_offset=rm.stride_depth_offset, 
+                                                          use_random_seed=rm.use_random_seed, 
+                                                          image_size=rm.image_size)
             if self.cfg.use_depth:
                 depth_model_path = self.tmp_dir / (bname + '_depth_model.bin')
-                self.depth_models[bname] = pyicg.DepthModel(bname + '_depth_model', body, depth_model_path.as_posix())
+                dm = self.cfg.depth_model
+                self.depth_models[bname] = pyicg.DepthModel(bname + '_depth_model', body, depth_model_path.as_posix(),
+                                                            sphere_radius=dm.sphere_radius, 
+                                                            n_divides=dm.n_divides, 
+                                                            n_points=dm.n_points, 
+                                                            max_radius_depth_offset=dm.max_radius_depth_offset, 
+                                                            stride_depth_offset=dm.stride_depth_offset, 
+                                                            use_random_seed=dm.use_random_seed, 
+                                                            image_size=dm.image_size)
 
             # Q: Possible to create on the fly?
             self.region_modalities[bname] = pyicg.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])

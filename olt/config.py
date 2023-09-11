@@ -15,6 +15,19 @@ OBJ_MODEL_DIRS = {ds_name: MEGAPOSE_DATA_DIR / Path('urdfs') / ds_name for ds_na
 # Adapted from https://stackoverflow.com/questions/53632152/why-cant-dataclasses-have-mutable-defaults-in-their-class-attributes-declaratio
 default_list = lambda l: field(default_factory=lambda: l)
 
+
+
+@dataclass
+class ModelConfig:
+    sphere_radius: float = 0.8
+    n_divides: int = 4 
+    n_points: int = 200
+    max_radius_depth_offset: float = 0.05
+    stride_depth_offset: float = 0.002 
+    use_random_seed: bool = False
+    image_size: int = 2000
+
+
 """
 Default value taken from ICG YCBV evaluation
 """
@@ -32,6 +45,11 @@ class TrackerConfig:
     n_update_iterations: int = 2
     tikhonov_parameter_rotation: float = 1000.0
     tikhonov_parameter_translation: float = 30000.0
+
+    region_model: ModelConfig = ModelConfig()
+    depth_model: ModelConfig = ModelConfig()
+
+    # DepthModel params
 
     # RegionModality params (partial)
     region_scales: list[int] = default_list([7, 4, 2])

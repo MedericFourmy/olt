@@ -9,8 +9,9 @@ if __name__ == '__main__':
 
     import time
     from pathlib import Path
-
+    import numpy as np
     from olt.localizer import Localizer
+    from olt.tracker import Tracker
     from olt.continuous_tracker import ContinuousTracker
     from olt.evaluation_tools import BOPDatasetReader, append_result, run_bop_evaluation
     from olt.config import OBJ_MODEL_DIRS, EvaluationBOPConfig
@@ -22,7 +23,7 @@ if __name__ == '__main__':
     RUN_INFERENCE = True
     RUN_EVALUATION = True
 
-    USE_DEPTH = False 
+    USE_DEPTH = True 
     SKIP_N_IMAGES = 0
     NB_IMG_RUN = -1  # all
     # NB_IMG_RUN = 50
@@ -34,37 +35,41 @@ if __name__ == '__main__':
     # FAKE_LOCALIZATION_DELAY = 0.5
     USE_GT_FOR_LOCALIZATION = False
     FAKE_LOCALIZATION_DELAY = 0.0
-    IMG_FREQ = 5
+    # IMG_FREQ = 5
     # IMG_FREQ = 10
     # IMG_FREQ = 15
     # IMG_FREQ = 20
     # IMG_FREQ = 30
     # IMG_FREQ = 60
-
+    IMG_FREQ = 90
 
     eval_cfg = EvaluationBOPConfig() 
     eval_cfg.ds_name = 'ycbv'
 
+
+    ########## TrackerConfig ###############
     eval_cfg.tracker_cfg.viewer_display = False
     eval_cfg.tracker_cfg.viewer_save = False
 
     eval_cfg.tracker_cfg.use_depth = USE_DEPTH
     eval_cfg.tracker_cfg.measure_occlusions = USE_DEPTH
-    eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 5000.0
+    eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 1000.0
     eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
-
 
     # eval_cfg.tracker_cfg.n_corr_iterations = 0
     # eval_cfg.tracker_cfg.n_update_iterations = 0
     eval_cfg.tracker_cfg.n_corr_iterations = 4
     eval_cfg.tracker_cfg.n_update_iterations = 2
     # if nb of values in those lists are lower than n_corr_iterations, repeat last value
+    
     # eval_cfg.tracker_cfg.region_scales: [7, 4, 2]
     # eval_cfg.tracker_cfg.region_standard_deviations: [25.0, 15.0, 10.0, 5.0]
     # eval_cfg.tracker_cfg.region_standard_deviations = [5*v for v in eval_cfg.tracker_cfg.region_standard_deviations]
     # eval_cfg.tracker_cfg.depth_standard_deviations = [0.0, 0.0, 0.0]
     # eval_cfg.tracker_cfg.depth_standard_deviations = [0.05, 0.03, 0.02]
+    ###############
 
+    ########## LocalizerConfig ###############
     eval_cfg.localizer_cfg.detector_threshold = 0.1  # low threshold -> high AR but lower precision
     eval_cfg.localizer_cfg.n_coarse = 1
     eval_cfg.localizer_cfg.n_refiner = 4
@@ -77,6 +82,7 @@ if __name__ == '__main__':
     ds_name = eval_cfg.ds_name
     # ds_name = 'rotd'
     reader = BOPDatasetReader(ds_name, load_depth=USE_DEPTH)
+    ###############
 
 
 
@@ -85,21 +91,33 @@ if __name__ == '__main__':
 
     all_bop19_results = []
 
-    # METHOD = 'cosyonly'
-    METHOD = 'threaded'
+    # METHOD = 'cosyonly'  # Run only cosypose on the bop19 targets
+    METHOD = 'threaded'  # Run continuous implementation of olt 
+    # METHOD = 'cosyrefined' # Run cosypose + refinement of ICG 
     # METHOD = 'YOURMETHOD'
 
+    # METHOD = 'only_tracker_init' # When init() has to create new .bin files, a multiprocessing error may happen 
+
     # NAMING EXPERIMENTS
+    # !!!!! name should NOT contain '_' characters
     modality = 'rgbd' if USE_DEPTH else 'rgb'
     if METHOD == 'threaded':
         run_name = get_method_name(METHOD, 
                                    eval_cfg.localizer_cfg.training_type,
                                    eval_cfg.localizer_cfg.renderer_name,
                                    f'{IMG_FREQ}Hz',
-                                   modality
+                                   modality,
+                                   f'n_points={eval_cfg.tracker_cfg.region_model.n_points}'
                                    )
         rate = Rate(IMG_FREQ)
-
+    elif METHOD == 'cosyrefined':
+        run_name = get_method_name(METHOD, 
+                                   eval_cfg.localizer_cfg.training_type,
+                                   eval_cfg.localizer_cfg.renderer_name,
+                                   modality,
+                                   f'npoints={eval_cfg.tracker_cfg.region_model.n_points}'
+                                   )
+        rate = Rate(IMG_FREQ)
     elif METHOD == 'cosyonly':
         run_name = get_method_name(METHOD, 
                                     eval_cfg.localizer_cfg.training_type, 
@@ -113,6 +131,15 @@ if __name__ == '__main__':
                                    f'{IMG_FREQ}Hz',
                                    modality
                                     )
+        
+
+    elif METHOD == 'only_tracker_init':
+        rgb_intrinsics = reader.get_intrinsics(all_sids[0], reader.map_sids_vids[all_sids[0]][0])
+        K, height, width = intrinsics2Kres(**rgb_intrinsics)
+        depth_intrinsics = rgb_intrinsics if USE_DEPTH else None  # same for YCBV
+        tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, rgb_intrinsics, depth_intrinsics, np.eye(4))
+        tracker.init()
+    
     else:
         raise ValueError(f'Method {METHOD} not defined')
     ##############################################################
@@ -121,6 +148,15 @@ if __name__ == '__main__':
         out = input(f'\nRunning {run_name} ? ([y]/n)\n')
         if out == 'n':
             exit('Exiting run script') 
+
+
+
+
+        if METHOD == 'cosyrefined':
+            localizer = Localizer(ds_name, eval_cfg.localizer_cfg)
+
+            # # Warmup
+            # localizer.predict(reader.get_obs(sid0, vids[0]).rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
 
         for sid in all_sids:
             vids = reader.map_sids_vids[sid]
@@ -145,6 +181,13 @@ if __name__ == '__main__':
                 # Warmup and init
                 object_poses = reader.predict_gt(sid, vids[0]) if USE_GT_FOR_LOCALIZATION else None
                 continuous_tracker(obs.rgb, depth, object_poses, sid, vids[0])
+
+            elif METHOD == 'cosyrefined':
+                tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, rgb_intrinsics, depth_intrinsics, np.eye(4))
+                tracker.init()
+
+                # Warmup
+                localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
 
             elif METHOD == 'cosyonly':
                 localizer = Localizer(ds_name, eval_cfg.localizer_cfg)
@@ -191,23 +234,36 @@ if __name__ == '__main__':
                             append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt_method)
 
                     rate.sleep()
+                
+                elif METHOD == 'cosyrefined':
+                    if reader.check_if_in_bop19_targets(sid, vid):
+                        obs = observations[i]
+                        t = time.perf_counter()
+                        poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
+                        
+                        # Reset current estimations and run track
+                        tracker.detected_bodies(poses, scores)
+                        depth = obs.depth if USE_DEPTH else None
+                        tracker.set_image(obs.rgb, depth)
+                        toto = time.perf_counter()
+                        tracker.track()
+                        print('Tack took', 1000*(time.perf_counter() - toto))
+
+
+                        poses, scores = tracker.get_current_preds()
+                        dt_method = time.perf_counter() - t
+                        for obj_name in poses:
+                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, scores[obj_name], poses[obj_name], dt_method)
 
                 elif METHOD == 'cosyonly':
                     if reader.check_if_in_bop19_targets(sid, vid):
                         obs = observations[i]
                         t = time.perf_counter()
-                        # preds, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
-                        data_TCO, extra_data = localizer.get_cosy_predictions(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
-                        poses = data_TCO.poses.cpu()
+                        poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
 
                         dt_method = time.perf_counter() - t
-                        for k in range(len(data_TCO)):
-                            obj_label = data_TCO.infos['label'][k]
-                            obj_name = obj_label2name(obj_label, ds_name)
-                            score = data_TCO.infos['score'][k]
-                            TCO = poses[k].numpy()
-
-                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt_method)
+                        for obj_name in poses:
+                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, scores[obj_name], poses[obj_name], dt_method)
 
                 elif METHOD == 'YOURMETHOD':
                     raise NotImplementedError('HERE implement prediction and call append_result if check_if_in_bop19_targets returns true')
@@ -230,13 +286,14 @@ if __name__ == '__main__':
 
     # bop result file name stricly formatted:<method>_<ds_name>-<split>.csv
     result_bop_eval_filename = f'{run_name}_{ds_name}-test.csv'
+    result_bop_eval_path = RESULTS_DIR_NAME / result_bop_eval_filename
 
     if RUN_INFERENCE:
-        inout.save_bop_results(f'{RESULTS_DIR_NAME.as_posix()}/{result_bop_eval_filename}', all_bop19_results)
+        inout.save_bop_results(result_bop_eval_path.as_posix(), all_bop19_results)
 
     if RUN_EVALUATION:
         EVALUATIONS_DIR_NAME.mkdir(exist_ok=True)
-        print(f'\Evaluating {run_name}\n')
+        print(f'\nEvaluating {run_name}\n')
         run_bop_evaluation(result_bop_eval_filename, RESULTS_DIR_NAME, EVALUATIONS_DIR_NAME)
 
     # vid_name = f'result_{eval_cfg.ds_name}_{sid}.mp4'
