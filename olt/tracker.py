@@ -65,7 +65,7 @@ class Tracker:
         # erase image directory
         if self.imgs_dir.exists(): 
             shutil.rmtree(self.imgs_dir.as_posix(), ignore_errors=True)
-        self.imgs_dir.mkdir(parents=True)
+        self.imgs_dir.mkdir(parents=True, exist_ok=True)
         assert(self.obj_model_dir.exists())
 
 
