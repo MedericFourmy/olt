@@ -17,6 +17,7 @@ from pyicg import Body
 import functools
 import cProfile, pstats
 
+DEBUG = False
 
 @dataclass
 class ProcessStats(object):
@@ -35,35 +36,40 @@ def get_name(cl, dt):
 def measure_load(func):
     @functools.wraps(func)
     def wrapper_load_measure(*args, **kwargs):
-        start_time = time.perf_counter()
-        # with cProfile.Profile() as pr:
-        value = func(*args, **kwargs)
-            # pr.dump_stats(f"cprofile.log")
+        if DEBUG:
+            self = args[0]
+            start_time = time.perf_counter()
+            with cProfile.Profile() as pr:
+                value = func(*args, **kwargs)
 
+                end_time = time.perf_counter()
+                run_time = end_time - start_time
+                pr.dump_stats(get_name(self, run_time))
+
+                
+                
+                # pr.print_stats("cumulative")
+                # pr.create_stats()
+                # logging.info(pr.stats)
+                # pr.print_stats()
             
-            
-            # pr.print_stats("cumulative")
-            # pr.create_stats()
-            # logging.info(pr.stats)
-            # pr.print_stats()
-        end_time = time.perf_counter()
-        run_time = end_time - start_time
-        self = args[0]
 
-        try:
-            self.start_times.append(start_time)
-        except AttributeError as e:
-            self.start_times = deque([start_time], maxlen=1000)
-        try:
-            self.end_times.append(end_time)
-        except AttributeError as e:
-            self.end_times = deque([end_time], maxlen=1000)
+            try:
+                self.start_times.append(start_time)
+            except AttributeError as e:
+                self.start_times = deque([start_time], maxlen=10)
+            try:
+                self.end_times.append(end_time)
+            except AttributeError as e:
+                self.end_times = deque([end_time], maxlen=10)
 
-        load = (np.sum(np.array(self.end_times)- np.array(self.start_times))) / (self.end_times[-1] - self.start_times[0])
-        if run_time > 0.03:
-            logging.warn(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
+            load = (np.sum(np.array(self.end_times)- np.array(self.start_times))) / (self.end_times[-1] - self.start_times[0])
+            if run_time > 0.03:
+                logging.warn(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
+            else:
+                logging.info(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
         else:
-            logging.info(f"{type(args[0])} was running with {100* load} % and the las call took {run_time} s.")
+            value = func(*args, **kwargs)
 
         return value
     return wrapper_load_measure
@@ -303,6 +309,7 @@ class ImageBuffer(Actor):
 class ResultLoggerActor(Actor):
     def __init__(self, *args, **kwargs):
         self.store = {}
+        self.img_ids = deque(maxlen=20)
         # self.latest_result = (-1, -1) # (img_id, cosy_base_id)
         self.latest_result = -1
         self.earliest_result = 10000
@@ -310,6 +317,8 @@ class ResultLoggerActor(Actor):
         self.open_result_requests = {} # img_id to message waiting for that image_id
 
         self.message_triggers = []
+
+        self.registered_addresses = []
      
         super().__init__(*args, **kwargs)
 
@@ -366,11 +375,22 @@ class ResultLoggerActor(Actor):
         if isinstance(message, TrackerRequest):
             # assert message.has_cosy_base_id()
             if message.has_poses_result():
+
+                for receiver in self.registered_addresses:
+                    self.send(receiver, message)
+
                 message.result_log_time = time.time()
                 self.earliest_result = min([self.earliest_result, message.img_id])
                 self.latest_result = max([self.latest_result, message.img_id])
                 self.highest_cosy_base_id = max([self.highest_cosy_base_id, message.cosy_base_id])
+
                 if message.img_id not in self.store.keys():
+                    if self.img_ids.__len__() >= self.img_ids.maxlen:
+                        # keep the stored results small
+                        to_delete_key = self.img_ids.popleft()
+                        del self.store[to_delete_key]
+                    self.img_ids.append(message.img_id)
+
                     self.store[message.img_id] = [message]
                 else:
                     self.store[message.img_id].append(message)
@@ -453,6 +473,9 @@ class ResultLoggerActor(Actor):
                         
                         self.open_result_requests[orig_msg.img_id].remove((orig_sender, orig_msg))
                 return
+            
+        if isinstance(message, str) and message == "register":
+            self.registered_addresses.append(sender)
 
                 
         
