@@ -45,7 +45,6 @@ class ContinuousTracker:
         self.queue_img = Manager().Queue()
         self.queue_poses_initialization = SimpleQueue()
         self.collect_statistics = collect_statistics
-        self.fake_localization_delay = fake_localization_delay
 
         self.stats_updates_from_localizer: list[(int, int, int, int)] = []
         self._stats_last_update_from_localizer: float | None = None
@@ -83,7 +82,7 @@ class ContinuousTracker:
                 local_tracker_args,
                 localizer_args,
                 localizer_predict_kwargs,
-                self.fake_localization_delay
+                fake_localization_delay
             ),
         )
         self.p.start()
@@ -111,7 +110,6 @@ class ContinuousTracker:
         object_poses: dict | None = None,
         sid: int | None = None,
         vid: int | None = None,
-        without_localizer: bool = False,
     ) -> dict[str, np.ndarray]:
         """Evaluate on the given image, if ground_truth_localizer is used, we need sid
         and vid as well."""
@@ -128,10 +126,9 @@ class ContinuousTracker:
             self._initialized = True
             return self.main_tracker.get_current_preds()
 
-        if not without_localizer:
-            if not self.queue_poses_initialization.empty():
-                self._update_main_tracker_from_localizer()
-            self.queue_img.put((img, depth, object_poses, sid, vid))
+        if not self.queue_poses_initialization.empty():
+            self._update_main_tracker_from_localizer()
+        self.queue_img.put((img, depth, object_poses, sid, vid))
 
         self.main_tracker.set_image(img, depth)
         self.main_tracker.track()
@@ -159,33 +156,175 @@ class ContinuousTracker:
             img, depth, object_poses, sid, vid = queue_img.get()
             if img is None:
                 return
-
+            
             scores_loca = None
             if object_poses is None:
                 object_poses, scores_loca = localizer.predict(img, **localizer_predict_kwargs)
+                # data_TCO, extra_data = localizer.get_cosy_predictions(img, **localizer_predict_kwargs)
+                # object_poses, scores_loca = localizer.cosypreds2posesscores(data_TCO, extra_data)
             if fake_localization_delay > 0.0:
                 time.sleep(fake_localization_delay)
+
+            sid0, vid0 = sid, vid
 
             # reset from scratch with all new detections
             tracker.detected_bodies(object_poses, None)
             tracker.set_image(img, depth)
             tracker.track()
 
-            sid0, vid0 = sid, vid
-
             # Track
             while not queue_img.empty():
                 img, depth, object_poses_not_used, sid, vid = queue_img.get()
+                # Signal to exit subprocess
                 if img is None:
                     return
                 tracker.set_image(img, depth)
                 tracker.track()
 
             # return poses from tracker and scores from localizer detections
-            poses, _ = tracker.get_current_preds() 
+            object_poses, _ = tracker.get_current_preds() 
 
             # remove poses that do not have satisfactory
 
             queue_poses_initialization.put(
-                (poses, scores_loca, sid0, vid0, sid, vid)
+                (object_poses, scores_loca, sid0, vid0, sid, vid)
+            )
+
+
+
+#############################################
+#############################################
+#############################################
+#############################################
+#############################################
+
+
+
+class ContinuousTrackerCosytrack:
+    def __init__(
+        self,
+        localizer_cfg: LocalizerConfig,
+        ds_name: str,
+        rgb_intrinsics: dict,
+        collect_statistics: bool = False,
+    ) -> None:
+        """
+        gt_predictor: needed for GT localization, lambda f(sid, vid) -> object_poses, if
+        None use localizer.
+        """
+        self.queue_img = Manager().Queue()
+        self.queue_poses_initialization = SimpleQueue()
+        self.collect_statistics = collect_statistics
+
+        self.stats_updates_from_localizer: list[(int, int, int, int)] = []
+        self._stats_last_update_from_localizer: float | None = None
+        self._stats_localizer_freq: float = 0
+
+        self._initialized = False
+
+        self.K, _, _ = intrinsics2Kres(**rgb_intrinsics)
+
+        localizer_args = (ds_name, localizer_cfg)
+        self.main_localizer = Localizer(*localizer_args)
+        self.localizer_predict_kwargs = dict(K=self.K, n_coarse=1, n_refiner=6)
+        self.p = Process(
+            target=self._localize_and_track,
+            args=(
+                self.queue_img,
+                self.queue_poses_initialization,
+                localizer_args,
+                self.localizer_predict_kwargs,
+            ),
+        )
+        self.p.start()
+
+    def finish(self):
+        self.queue_img.put((None, None, None, None, None))
+        self.p.join()
+
+    def _update_main_tracker_from_localizer(self):
+        # poses propagated from last detections + scores from last localization
+        self.data_TCO, extra_data, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
+        # print('_update_main_tracker_from_localizer')
+        # print(self.data_TCO)
+        if self.collect_statistics:
+            if self._stats_last_update_from_localizer is not None:
+                self._stats_localizer_freq = 1.0 / (
+                    time.time() - self._stats_last_update_from_localizer
+                )
+            self._stats_last_update_from_localizer = time.time()
+            self.stats_updates_from_localizer.append((sid0, vid0, sidN, vidN))
+
+    def __call__(
+        self,
+        img: np.ndarray,
+        depth: np.ndarray | None = None,
+        object_poses: dict | None = None,
+        sid: int | None = None,
+        vid: int | None = None
+    ) -> dict[str, np.ndarray]:
+        """Evaluate on the given image, if ground_truth_localizer is used, we need sid
+        and vid as well."""
+
+        # self.data_TCO = None
+
+        if not self._initialized:
+            print('Warming up CosyPose')
+            # running the first iteration that will be slow, as we need to wait for the
+            # localization results
+            self.main_localizer.predict(img, **self.localizer_predict_kwargs)
+            self.queue_img.put((img, depth, object_poses, sid, vid))
+            self._update_main_tracker_from_localizer()
+            self._initialized = True
+
+        self.queue_img.put((img, depth, object_poses, sid, vid))
+
+        data_TCO_track, extra_data = self.main_localizer.get_cosy_predictions(img, self.K, n_coarse=0, n_refiner=1, TCO_init=self.data_TCO, run_detector=False)
+        return self.main_localizer.cosypreds2posesscores(data_TCO_track, extra_data)
+        # return self.main_localizer.track(img, self.K, self.data_TCO, n_refiner=1)  # not working (!)
+
+    @staticmethod
+    def _localize_and_track(
+        queue_img,
+        queue_poses_initialization,
+        localizer_args,
+        localizer_predict_kwargs=None,
+        fake_localization_delay=0.0
+    ):
+        localizer = Localizer(*localizer_args)
+
+        while True:
+            # Localize
+            img, depth, object_poses, sid, vid = queue_img.get()
+            if img is None:
+                return
+
+            scores_loca = None
+            if object_poses is None:
+                # object_poses, scores_loca = localizer.predict(img, **localizer_predict_kwargs)
+                data_TCO, extra_data = localizer.get_cosy_predictions(img, **localizer_predict_kwargs)
+                object_poses, scores_loca = localizer.cosypreds2posesscores(data_TCO, extra_data)
+            if fake_localization_delay > 0.0:
+                time.sleep(fake_localization_delay)
+
+            sid0, vid0 = sid, vid
+
+            # Track
+            while not queue_img.empty():
+                img, depth, object_poses_not_used, sid, vid = queue_img.get()
+                # Signal to exit subprocess
+                if img is None:
+                    return
+                t = time.perf_counter()
+                
+                # track with init from previous tracked pose
+                data_TCO, extra_data = localizer.get_cosy_predictions(img, localizer_predict_kwargs['K'], n_coarse=0, n_refiner=1, TCO_init=data_TCO, run_detector=False)
+                print('cosy tracking (ms)', 1000*(time.perf_counter() - t))
+            
+            print(f'Cosy tracker caught up vid0, vid {vid0}, {vid}')
+
+            # remove poses that do not have satisfactory
+
+            queue_poses_initialization.put(
+                (data_TCO, extra_data, sid0, vid0, sid, vid)
             )

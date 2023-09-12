@@ -1,9 +1,10 @@
-import numpy as pin
 import numpy as np
+import pandas as pd
 import torch
 
 from happypose.toolbox.inference.types import ObservationTensor
 from happypose.pose_estimators.cosypose.cosypose.utils.cosypose_wrapper import CosyPoseWrapper
+from happypose.pose_estimators.cosypose.cosypose.utils.tensor_collection import TensorCollection as tc
 from happypose.pose_estimators.cosypose.cosypose.config import LOCAL_DATA_DIR
 
 from olt.config import LocalizerConfig
@@ -30,32 +31,41 @@ class Localizer:
         self.pose_estimator = cosy_wrapper.pose_predictor
 
         # Megapose (TODO)
+    
 
 
-    def get_cosy_predictions(self, rgb, K, n_coarse=None, n_refiner=None):
+    def get_cosy_predictions(self, rgb, K, n_coarse=None, n_refiner=None, TCO_init=None, run_detector=True):
         n_coarse = self.cfg.n_coarse if n_coarse is None else n_coarse
         n_refiner = self.cfg.n_refiner if n_refiner is None else n_refiner
         observation = ObservationTensor.from_numpy(rgb, None, K)
         if self.device.type == 'cuda':
             observation.cuda()
 
+        coarse_estimates = None if run_detector else 'NotNone'  # this argument has to be None 
+
         # labels returned by cosypose are the same as the "local_data/urdfs/ycbv" ones
         # -> obj_000010 == banana
         # Exception handling: if no object detected in the image, cosypose currently throws an AttributeError error
         try:
             data_TCO, extra_data = self.pose_estimator.run_inference_pipeline(observation,
-                                                                        run_detector=True,
-                                                                        n_coarse_iterations=n_coarse, 
-                                                                        n_refiner_iterations=n_refiner,
-                                                                        detection_th=self.cfg.detector_threshold)
+                                                                              data_TCO_init=TCO_init,
+                                                                              run_detector=run_detector,
+                                                                              n_coarse_iterations=n_coarse, 
+                                                                              n_refiner_iterations=n_refiner,
+                                                                              detection_th=self.cfg.detector_threshold,
+                                                                              coarse_estimates=coarse_estimates)
         except AttributeError as e:
             return {}
 
         return data_TCO, extra_data
 
-    def predict(self, rgb, K, n_coarse=None, n_refiner=None):
-
-        data_TCO, extra_data = self.get_cosy_predictions(rgb, K, n_coarse=None, n_refiner=None)
+    def track(self, rgb, K, TCO_init, n_refiner=1):
+        data_TCO, extra_data = self.get_cosy_predictions(rgb, K, n_coarse=0, n_refiner=n_refiner, TCO_init=TCO_init, run_detector=False)
+        
+        return self.cosypreds2posesscores(data_TCO, extra_data)
+        
+    @staticmethod
+    def cosypreds2posesscores(data_TCO, extra_data):
 
         # Send all poses to cpu to be able to process them
         poses = data_TCO.poses.cpu()
@@ -100,3 +110,9 @@ class Localizer:
         
         assert len(preds) == len(scores)
         return preds, scores
+
+
+    def predict(self, rgb, K, n_coarse=None, n_refiner=None):
+
+        data_TCO, extra_data = self.get_cosy_predictions(rgb, K, n_coarse=n_coarse, n_refiner=n_refiner)
+        return self.cosypreds2posesscores(data_TCO, extra_data)

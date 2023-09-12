@@ -142,18 +142,48 @@ class Tracker:
             # Q: Possible to create on the fly?
             self.region_modalities[bname] = pyicg.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])
             
-            self.region_modalities[bname].scales = self.cfg.region_scales
-            self.region_modalities[bname].standard_deviations = self.cfg.region_standard_deviations
+            # Parameters for histogram calculation
+            self.region_modalities[bname].n_histogram_bins = self.cfg.region_modality.n_histogram_bins
+            self.region_modalities[bname].learning_rate_f = self.cfg.region_modality.learning_rate_f
+            self.region_modalities[bname].learning_rate_b = self.cfg.region_modality.learning_rate_b
+            self.region_modalities[bname].unconsidered_line_length = self.cfg.region_modality.unconsidered_line_length
+            self.region_modalities[bname].max_considered_line_length = self.cfg.region_modality.max_considered_line_length
+
 
             if self.cfg.use_depth:
                 self.depth_modalities[bname] = pyicg.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
-                self.depth_modalities[bname].considered_distances = self.cfg.depth_considered_distances
-                self.depth_modalities[bname].standard_deviations = self.cfg.depth_standard_deviations
+
+                # Parameters for general distribution
+                self.depth_modalities[bname].n_points = self.cfg.depth_modality.n_points
+                self.depth_modalities[bname].stride_length = self.cfg.depth_modality.stride_length
+                self.depth_modalities[bname].considered_distances = self.cfg.depth_modality.considered_distances
+                self.depth_modalities[bname].standard_deviations = self.cfg.depth_modality.standard_deviations
+
 
                 # Detect occlusion using measured depth and use it to improve estimates
                 if self.cfg.measure_occlusions:
                     self.region_modalities[bname].MeasureOcclusions(self.depth_camera)
+                    # Parameters for occlusion handling
+                    self.region_modalities[bname].measured_depth_offset_radius = self.cfg.region_modality.measured_depth_offset_radius
+                    self.region_modalities[bname].measured_occlusion_radius = self.cfg.region_modality.measured_occlusion_radius
+                    self.region_modalities[bname].measured_occlusion_threshold = self.cfg.region_modality.measured_occlusion_threshold
+                    self.region_modalities[bname].min_n_unoccluded_lines = self.cfg.region_modality.min_n_unoccluded_lines
+
+
                     self.depth_modalities[bname].MeasureOcclusions()
+                    # Parameters for occlusion handling
+                    self.depth_modalities[bname].measured_depth_offset_radius = self.cfg.depth_modality.measured_depth_offset_radius
+                    self.depth_modalities[bname].measured_occlusion_radius = self.cfg.depth_modality.measured_occlusion_radius
+                    self.depth_modalities[bname].measured_occlusion_threshold = self.cfg.depth_modality.measured_occlusion_threshold
+                    self.depth_modalities[bname].min_n_unoccluded_points = self.cfg.depth_modality.min_n_unoccluded_points
+
+
+                # TODO: Model occlussions
+                # if self.cfg.model_occlusions:  
+                #     self.region_modalities[bname].modeled_depth_offset_radius = self.cfg.region_modality.modeled_depth_offset_radius
+                #     self.region_modalities[bname].modeled_occlusion_radius = self.cfg.region_modality.modeled_occlusion_radius
+                #     self.region_modalities[bname].modeled_occlusion_threshold = self.cfg.region_modality.modeled_occlusion_threshold
+                #     self.region_modalities[bname].n_unoccluded_iterations = self.cfg.region_modality.n_unoccluded_iterations
 
             # TODO: Add only the tracked body to the viewer?
             self.renderer_geometry.AddBody(body)

@@ -5,8 +5,6 @@ from pathlib import Path
 
 from happypose.toolbox.datasets.bop_scene_dataset import BOPDataset
 from happypose.toolbox.datasets.scene_dataset import ObservationInfos
-from happypose.pose_estimators.megapose.src.megapose.evaluation.bop import run_evaluation
-from happypose.pose_estimators.megapose.src.megapose.evaluation.eval_config import BOPEvalConfig
 
 from olt.config import BOP_DS_DIRS
 from olt.utils import Kres2intrinsics, obj_id2name
