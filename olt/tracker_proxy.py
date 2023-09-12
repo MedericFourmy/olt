@@ -6,12 +6,14 @@ import logging
 from thespian.actors import ActorExitRequest
 
 import numpy as np
-from olt.actor_tracker import ActorConfig, ActorSystem, DispatcherActor, ImageBuffer, ImageStreamerActor, LocalizerActor, ResultLoggerActor, TrackerActor, TrackerManager, TrackerRequest
+from olt.actor_tracker import ActorConfig, ActorSystem, DispatcherActor, ImageBuffer, ImageStreamerActor, LocalizerActor, ResultLoggerActor, TrackerActor, TrackerManager, TrackerRequest, DEBUG
 from olt.config import logcfg
 
 
 class MultiTrackerProxy(object):
-    def __init__(self) -> None:
+    def __init__(self, debug:bool = False) -> None:
+        global DEBUG
+        DEBUG = debug
         self.system = ActorSystem('multiprocTCPBase', logDefs=logcfg)
 
         self.img_streamer = self.system.createActor(ImageStreamerActor)
@@ -78,6 +80,14 @@ class MultiTrackerProxy(object):
         # assert isinstance(img_id, int)
         # return img_id
         return
+    
+    def register_for_results(self):
+        self.system.tell(self.result_logger, "register")
+    
+    def listen_for_results(self, timeout:float = 10.0, message_types = (TrackerRequest,)):
+        msg = self.system.listen(timeout=timeout)
+        if isinstance(msg, message_types):
+            return msg
 
     def get_latest_available_estimate(self, wait_for_valid_res=False):
         if not wait_for_valid_res:

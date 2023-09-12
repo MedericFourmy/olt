@@ -285,6 +285,8 @@ if __name__ == '__main__':
                     tp.feed_image(req=req, block=True)
                     tp._trigger_localizer_polling()
 
+                tp.register_for_results()
+
             else:
                 raise NotImplementedError(args.method+' not implemented')
 
@@ -366,7 +368,10 @@ if __name__ == '__main__':
 
 
                     while True:
-                        res = tp.get_latest_available_estimate(wait_for_valid_res=True)
+                        if i > 0:
+                            res = tp.listen_for_results()
+                        else: 
+                            res = tp.get_latest_available_estimate(wait_for_valid_res=True)
                         assert isinstance(res, TrackerRequest)
                         if res.img_id >= i:
                             break
