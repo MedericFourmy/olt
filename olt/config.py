@@ -32,14 +32,14 @@ class ModelConfig:
 class RegionModalityConfig:
 
     # Parameters for general distribution
-    n_lines_: int = 200
-    min_continuous_distance_: float = 3.0
-    function_length_: int = 8
-    distribution_length_: int = 12
-    function_amplitude_: float = 0.43
-    function_slope_: float = 0.5
-    learning_rate_: float = 1.3
-    n_global_iterations_: int = 1
+    n_lines: int = 200
+    min_continuous_distance: float = 3.0
+    function_length: int = 8
+    distribution_length: int = 12
+    function_amplitude: float = 0.43
+    function_slope: float = 0.5
+    learning_rate: float = 1.3
+    n_global_iterations: int = 1
     scales: list[float] = default_list([6, 4, 2, 1]) 
     standard_deviations: list[float] = default_list([15.0, 5.0, 3.5, 1.5])
 
@@ -84,6 +84,8 @@ class DepthModalityConfig:
     min_n_unoccluded_points: int = 0
 
 
+
+
 """
 Default value taken from ICG YCBV evaluation
 """
@@ -94,6 +96,7 @@ class TrackerConfig:
     viewer_display: bool = False
     viewer_save: bool = False
     use_depth: bool = False
+    depth_scale: float = 0.001
     measure_occlusions: bool = False
     
     # Optimization params

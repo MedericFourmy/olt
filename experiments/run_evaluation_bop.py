@@ -26,6 +26,8 @@ if __name__ == '__main__':
         parser.add_argument('--no-evaluation', dest='run_evaluation', action='store_false', default=True)
         parser.add_argument('--img-freq',  dest='img_freq', type=int, default=30)
         parser.add_argument('--use-depth', dest='use_depth', action='store_true', default=False)
+        parser.add_argument('--viewer-display', dest='viewer_display', action='store_true', default=False)
+        parser.add_argument('--viewer-save', dest='viewer_save', action='store_true', default=False)
         parser.add_argument('--use-gt-for-localization', dest='use_gt_for_localization', action='store_true', default=False)
         parser.add_argument('--use-cosypose-as-tracker', dest='use_cosypose_as_tracker', action='store_true', default=False)
         parser.add_argument('--fake-localization-delay', dest='fake_localization_delay', type=float, default=0.0)
@@ -58,7 +60,7 @@ if __name__ == '__main__':
         from olt.continuous_tracker import ContinuousTracker, ContinuousTrackerCosytrack
     from olt.evaluation_tools import BOPDatasetReader, append_result, run_bop_evaluation
     from olt.config import OBJ_MODEL_DIRS, EvaluationBOPConfig
-    from olt.utils import create_video_from_images, obj_name2id, obj_label2name, intrinsics2Kres, get_method_name
+    from olt.utils import create_video_from_images, obj_name2id, intrinsics2Kres, get_method_name
     from olt.rate import Rate
 
     from bop_toolkit_lib import inout  # noqa
@@ -69,8 +71,8 @@ if __name__ == '__main__':
     eval_cfg.ds_name = 'ycbv'
 
     ########## TrackerConfig ###############
-    eval_cfg.tracker_cfg.viewer_display = False
-    eval_cfg.tracker_cfg.viewer_save = False
+    eval_cfg.tracker_cfg.viewer_display = args.viewer_display
+    eval_cfg.tracker_cfg.viewer_save = args.viewer_save
     eval_cfg.tracker_cfg.use_depth = args.use_depth
     eval_cfg.tracker_cfg.measure_occlusions = args.use_depth
 
@@ -84,25 +86,31 @@ if __name__ == '__main__':
         eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
         eval_cfg.tracker_cfg.region_modality.scales: [7, 4, 2]
         eval_cfg.tracker_cfg.region_modality.standard_deviations: [25.0, 15.0, 10.0]
+        eval_cfg.tracker_cfg.region_modality.n_unoccluded_iterations = 0
         eval_cfg.tracker_cfg.depth_modality.considered_distances = [0.300, 0.250, 0.100]
         eval_cfg.tracker_cfg.depth_modality.standard_deviations = [0.100, 0.05, 0.02]
         eval_cfg.tracker_cfg.depth_modality.stride_length = 0.010  # "for efficiency"
+        eval_cfg.tracker_cfg.depth_modality.n_unoccluded_iterations = 0
 
     else:
         # YCBV tracking SETTINGS
         eval_cfg.tracker_cfg.n_corr_iterations = 4
         eval_cfg.tracker_cfg.n_update_iterations = 2
-        eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 2000.0
+        eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 3000.0
         eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
         eval_cfg.tracker_cfg.region_modality.scales: [7, 4, 2]
         eval_cfg.tracker_cfg.region_modality.standard_deviations: [25.0, 15.0, 10.0]
+        eval_cfg.tracker_cfg.region_modality.n_unoccluded_iterations = 0
         eval_cfg.tracker_cfg.depth_modality.considered_distances = [0.07, 0.05, 0.04]
         eval_cfg.tracker_cfg.depth_modality.standard_deviations = [0.05, 0.03, 0.02]
+        eval_cfg.tracker_cfg.depth_modality.n_unoccluded_iterations = 0
+
+        eval_cfg.tracker_cfg.depth_scale = 0.001  # weird
+
 
     # # DEACTIVATE TRACKER
     # eval_cfg.tracker_cfg.n_corr_iterations = 0
     # eval_cfg.tracker_cfg.n_update_iterations = 0
-
     
     ###############
 
@@ -124,8 +132,8 @@ if __name__ == '__main__':
 
 
     all_sids = sorted(reader.map_sids_vids.keys())
-    sidmax = all_sids[-1]
-
+    # all_sids = [all_sids[0]]
+    # all_sids = [all_sids[2]]
     all_bop19_results = []
 
 
@@ -394,7 +402,7 @@ if __name__ == '__main__':
 
 
                 if i % args.print_info_every == 0:
-                    print(f'Scene: {sid}/{sidmax}, View: {vid}/{vids[-1]}')
+                    print(f'Scene: {sid}/{all_sids[-1]}, View: {vid}/{vids[-1]}')
                     print('track + update_viewers (ms)', 1000*dt_method)
 
             
@@ -402,9 +410,9 @@ if __name__ == '__main__':
                 # Terminate localizer subprocess
                 continuous_tracker.finish()
 
-            if args.method == 'ActorSystem':
-                # Terminate localizer subprocess
-                tp.shutdown()
+            # if args.method == 'ActorSystem':
+            #     # Terminate localizer subprocess
+            #     tp.shutdown()
 
 
     if args.run_inference:

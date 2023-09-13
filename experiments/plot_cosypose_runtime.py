@@ -16,8 +16,8 @@ PLOTS_DIR_NAME = Path('plots')
 PLOTS_DIR_NAME.mkdir(exist_ok=True)
 
 ds_name = 'ycbv'
-RENDERER_NAME = 'bullet'
-# RENDERER_NAME = 'panda'
+# RENDERER_NAME = 'bullet'
+RENDERER_NAME = 'panda'
 
 localizer_cfg = LocalizerConfig()
 localizer_cfg.n_workers = 0
@@ -44,32 +44,35 @@ poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=N_REFINER)
 #####################################
 #####################################
 
-# N_run_predict = 20
-# dt_lst = []
-# for i in range(N_run_predict):
-#     vid = reader.map_sids_vids[sid][i]
-#     obs = reader.get_obs(sid, vid)
+N_run_predict = 30
+n_refiner_lst = [1,2,3,4,5,6]
+dt_lst_dic = {n_refiner: [] for n_refiner in n_refiner_lst}
+for n_refiner in n_refiner_lst:
+    for i in range(N_run_predict):
+        vid = reader.map_sids_vids[sid][i]
+        obs = reader.get_obs(sid, vid)
 
-#     print(f'{i}/{N_run_predict}')
-#     t = time.perf_counter()
-#     poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=N_REFINER)
-#     # print(poses)
-#     dt = 1000*(time.perf_counter() - t)
-#     dt_lst.append(dt)
+        print(f'{i}/{N_run_predict}')
+        t = time.perf_counter()
+        poses, scores = localizer.predict(obs.rgb, K, n_coarse=1, n_refiner=n_refiner)
+        # print(poses)
+        dt = 1000*(time.perf_counter() - t)
+        dt_lst_dic[n_refiner].append(dt)
 
 
 
-# file_name = f'cosy_dt_n_refiner={N_REFINER}_n_workers={localizer_cfg.n_workers}'
-# file_name += f'_{RENDERER_NAME}'
-# file_path = PLOTS_DIR_NAME / f'{file_name}.{FIG_EXT}'
+file_name = f'cosy_n_refiner_lst={n_refiner_lst}_n_workers={localizer_cfg.n_workers}'
+file_name += f'_{RENDERER_NAME}'
+file_path = PLOTS_DIR_NAME / f'{file_name}.{FIG_EXT}'
 
-# plt.figure()
-# plt.title(f'Running CosyPose multiple times \n {file_name}')
-# plt.plot(np.arange(N_run_predict), dt_lst, 'x')
-# plt.xlabel('run #')
-# plt.ylabel('DT (ms)')
-# print('Saving ',file_path)
-# plt.savefig(file_path.as_posix())
+plt.figure()
+plt.title(f'Running CosyPose multiple times \n {file_name}')
+for n_refiner in n_refiner_lst:
+    plt.plot(np.arange(N_run_predict), dt_lst_dic[n_refiner], 'x', label=f'n_refiner={n_refiner}')
+plt.xlabel('run #')
+plt.ylabel('DT (ms)')
+print('Saving ',file_path)
+plt.savefig(file_path.as_posix())
 
 
 

@@ -102,6 +102,32 @@ for modality in modalities:
     plt.plot(available_freqs, ar_lst, color='g', linestyle=linestyles[modality], marker='o', markersize=5, label=f'{method+"-bis"}-{modality}')
 
 
+
+method = 'threaded'
+for modality in modalities:
+    ar_lst = []
+    available_freqs = []
+    for freq in FREQS:
+
+        run_name = get_method_name(method, 
+                                   training_type,
+                                   renderer_name,
+                                   f'{freq}Hz',
+                                   modality,
+                                   'ter')
+
+
+        scores19 = get_scores(run_name)
+        if scores19 is None: continue
+
+        ar = scores19['bop19_average_recall']
+        ar_lst.append(ar)
+        available_freqs.append(freq)
+
+    
+    plt.plot(available_freqs, ar_lst, color='orange', linestyle=linestyles[modality], marker='o', markersize=5, label=f'{method+"-ter"}-{modality}')
+
+
 method = 'cosyonly'
 run_name = get_method_name(method, 
                             training_type,
