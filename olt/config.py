@@ -93,9 +93,11 @@ Default value taken from ICG YCBV evaluation
 class TrackerConfig:
     tmp_dir_name: str = 'tmp'
     viewer_name: str = 'normal_viewer'
-    viewer_display: bool = False
-    viewer_save: bool = False
     use_depth: bool = False
+    viewer_display: bool = False
+    display_depth: bool = False
+    viewer_save: bool = False
+    no_depth_modality: bool = False
     depth_scale: float = 0.001
     measure_occlusions: bool = False
     

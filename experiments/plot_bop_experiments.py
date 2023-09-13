@@ -3,8 +3,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from olt.utils import get_method_name
 
-# FILE_EXT = 'svg'
-FILE_EXT = 'pdf'
+FILE_EXT = 'png'
+# FILE_EXT = 'pdf'
 EVALUATIONS_DIR_NAME = Path('evaluations')
 PLOTS_DIR_NAME = Path('plots')
 PLOTS_DIR_NAME.mkdir(exist_ok=True)
@@ -78,6 +78,7 @@ for modality in modalities:
     plt.plot(available_freqs, ar_lst, color=colors[method], linestyle=linestyles[modality], marker='o', markersize=5, label=f'{methods2labels[method]}-{modality}')
 
 method = 'threaded'
+n_refiner = 2
 for modality in modalities:
     ar_lst = []
     available_freqs = []
@@ -88,7 +89,17 @@ for modality in modalities:
                                    renderer_name,
                                    f'{freq}Hz',
                                    modality,
-                                   'bis')
+                                   'tikohigh',
+                                   f'nr2',
+                                   )
+        run_name = get_method_name(method, 
+                            training_type,
+                            renderer_name,
+                            f'{freq}Hz',
+                            f'nr{n_refiner}',
+                            modality,
+                            'tikohigh'
+                            )
 
 
         scores19 = get_scores(run_name)
@@ -99,7 +110,7 @@ for modality in modalities:
         available_freqs.append(freq)
 
     
-    plt.plot(available_freqs, ar_lst, color='g', linestyle=linestyles[modality], marker='o', markersize=5, label=f'{method+"-bis"}-{modality}')
+    plt.plot(available_freqs, ar_lst, color='g', linestyle=linestyles[modality], marker='o', markersize=5, label=f'{method+"-tikohigh"}-{modality}')
 
 
 
@@ -128,14 +139,31 @@ for modality in modalities:
     plt.plot(available_freqs, ar_lst, color='orange', linestyle=linestyles[modality], marker='o', markersize=5, label=f'{method+"-ter"}-{modality}')
 
 
-method = 'cosyonly'
-run_name = get_method_name(method, 
-                            training_type,
-                            renderer_name,
-                            f'nr{4}')
-scores19 = get_scores(run_name)
-if scores19 is not None:
-    plt.hlines(scores19['bop19_average_recall'], 0, FREQS[-1], color='r', linestyle='--', label=methods2labels[method])
+method = 'threaded'
+for modality in modalities:
+    ar_lst = []
+    available_freqs = []
+    for freq in FREQS:
+
+        run_name = get_method_name(method, 
+                                   training_type,
+                                   renderer_name,
+                                   f'{freq}Hz',
+                                   modality,
+                                   '4th')
+
+
+        scores19 = get_scores(run_name)
+        if scores19 is None: continue
+
+        ar = scores19['bop19_average_recall']
+        ar_lst.append(ar)
+        available_freqs.append(freq)
+
+    
+    plt.plot(available_freqs, ar_lst, color='k', linestyle=linestyles[modality], marker='o', markersize=5, label=f'{method+"-4th"}-{modality}')
+
+
 
 method = 'trackfromstart'
 for modality in modalities:
@@ -172,6 +200,33 @@ plt.grid()
 plt.legend(loc='lower center', ncol=2)
 plot_path = PLOTS_DIR_NAME / f'ar_f_freq.{FILE_EXT}'
 plt.savefig(plot_path.as_posix())
+
+
+
+
+
+plt.figure('Cosyonly multiple n_refiners')
+method = 'cosyonly'
+n_refiner_lst = [1,2,3,4,5,6]
+ar_lst = []
+for n_refiner in n_refiner_lst:
+    run_name = get_method_name(method, 
+                                training_type,
+                                renderer_name,
+                                f'nr{n_refiner}')
+    scores19 = get_scores(run_name)
+    ar = scores19['bop19_average_recall']
+    ar_lst.append(ar)
+plt.plot(n_refiner_lst, ar_lst, 'x')
+plt.xlabel('# refinfer steps')
+plt.ylabel('AR score BOP')
+plt.ylim(0.7,0.9)
+
+
+
+
+
+
 plt.show()
     
 

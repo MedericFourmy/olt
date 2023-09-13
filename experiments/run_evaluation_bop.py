@@ -26,12 +26,17 @@ if __name__ == '__main__':
         parser.add_argument('--no-evaluation', dest='run_evaluation', action='store_false', default=True)
         parser.add_argument('--img-freq',  dest='img_freq', type=int, default=30)
         parser.add_argument('--use-depth', dest='use_depth', action='store_true', default=False)
+        parser.add_argument('--no-depth-modality', dest='no_depth_modality', action='store_true', default=False)
         parser.add_argument('--viewer-display', dest='viewer_display', action='store_true', default=False)
+        parser.add_argument('--display-depth', dest='display_depth', action='store_true', default=False)
         parser.add_argument('--viewer-save', dest='viewer_save', action='store_true', default=False)
         parser.add_argument('--use-gt-for-localization', dest='use_gt_for_localization', action='store_true', default=False)
         parser.add_argument('--use-cosypose-as-tracker', dest='use_cosypose_as_tracker', action='store_true', default=False)
         parser.add_argument('--fake-localization-delay', dest='fake_localization_delay', type=float, default=0.0)
         parser.add_argument('--print-info-every', dest='print_info_every', type=int, default=60)
+        parser.add_argument('--n-refiner', dest='n_refiner', type=int, default=4)
+        parser.add_argument('--reset-after-n', dest='reset_after_n', type=int, default=0)
+        
 
         return parser.parse_args()
 
@@ -71,21 +76,25 @@ if __name__ == '__main__':
     eval_cfg.ds_name = 'ycbv'
 
     ########## TrackerConfig ###############
-    eval_cfg.tracker_cfg.viewer_display = args.viewer_display
-    eval_cfg.tracker_cfg.viewer_save = args.viewer_save
     eval_cfg.tracker_cfg.use_depth = args.use_depth
+    eval_cfg.tracker_cfg.viewer_display = args.viewer_display
+    eval_cfg.tracker_cfg.display_depth = args.display_depth
+    eval_cfg.tracker_cfg.viewer_save = args.viewer_save
     eval_cfg.tracker_cfg.measure_occlusions = args.use_depth
+    eval_cfg.tracker_cfg.no_depth_modality = args.no_depth_modality    
+    # eval_cfg.tracker_cfg.measure_occlusions = False
 
 
 
-    if args.method == 'cosyrefined':
+    if args.method in ['cosyrefined']:
+    # if args.method in ['threaded', 'cosyrefined']:
         # YCBV refinement SETTINGS
         eval_cfg.tracker_cfg.n_corr_iterations = 7
         eval_cfg.tracker_cfg.n_update_iterations = 2
         eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 100.0
         eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
-        eval_cfg.tracker_cfg.region_modality.scales: [7, 4, 2]
-        eval_cfg.tracker_cfg.region_modality.standard_deviations: [25.0, 15.0, 10.0]
+        eval_cfg.tracker_cfg.region_modality.scales = [7, 4, 2]
+        eval_cfg.tracker_cfg.region_modality.standard_deviations = [25.0, 15.0, 10.0]
         eval_cfg.tracker_cfg.region_modality.n_unoccluded_iterations = 0
         eval_cfg.tracker_cfg.depth_modality.considered_distances = [0.300, 0.250, 0.100]
         eval_cfg.tracker_cfg.depth_modality.standard_deviations = [0.100, 0.05, 0.02]
@@ -96,16 +105,22 @@ if __name__ == '__main__':
         # YCBV tracking SETTINGS
         eval_cfg.tracker_cfg.n_corr_iterations = 4
         eval_cfg.tracker_cfg.n_update_iterations = 2
-        eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 3000.0
-        eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
-        eval_cfg.tracker_cfg.region_modality.scales: [7, 4, 2]
+        eval_cfg.tracker_cfg.tikhonov_parameter_rotation =    600000.0
+        eval_cfg.tracker_cfg.tikhonov_parameter_translation = 6000000.0
+        # eval_cfg.tracker_cfg.tikhonov_parameter_rotation    = 3000000.0
+        # eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000000.0
+        eval_cfg.tracker_cfg.region_modality.scales = [7, 4, 2]
         eval_cfg.tracker_cfg.region_modality.standard_deviations: [25.0, 15.0, 10.0]
         eval_cfg.tracker_cfg.region_modality.n_unoccluded_iterations = 0
         eval_cfg.tracker_cfg.depth_modality.considered_distances = [0.07, 0.05, 0.04]
         eval_cfg.tracker_cfg.depth_modality.standard_deviations = [0.05, 0.03, 0.02]
+        # eval_cfg.tracker_cfg.depth_modality.considered_distances = [0.300, 0.250, 0.100]
+        # eval_cfg.tracker_cfg.depth_modality.standard_deviations = [0.100, 0.05, 0.02]
         eval_cfg.tracker_cfg.depth_modality.n_unoccluded_iterations = 0
 
-        eval_cfg.tracker_cfg.depth_scale = 0.001  # weird
+        eval_cfg.tracker_cfg.depth_scale = 0.001  # bop reader returns epth in millimeter
+        # eval_cfg.tracker_cfg.depth_scale = 1000.0
+         
 
 
     # # DEACTIVATE TRACKER
@@ -117,7 +132,7 @@ if __name__ == '__main__':
     ########## LocalizerConfig ###############
     eval_cfg.localizer_cfg.detector_threshold = 0.01  # low threshold -> high AR but lower precision
     eval_cfg.localizer_cfg.n_coarse = 1
-    eval_cfg.localizer_cfg.n_refiner = 4
+    eval_cfg.localizer_cfg.n_refiner = args.n_refiner
     # eval_cfg.localizer_cfg.renderer_name = 'panda'  # faster but from time to time very high runtime
     eval_cfg.localizer_cfg.renderer_name = 'bullet'  # higher AR, bit slower
     eval_cfg.localizer_cfg.training_type = 'synt+real'
@@ -145,6 +160,7 @@ if __name__ == '__main__':
                                    eval_cfg.localizer_cfg.training_type,
                                    eval_cfg.localizer_cfg.renderer_name,
                                    f'{args.img_freq}Hz',
+                                   f'nr{eval_cfg.localizer_cfg.n_refiner}',
                                    modality,
                                    )
         if args.use_cosypose_as_tracker:
@@ -236,12 +252,11 @@ if __name__ == '__main__':
                 localizer_cfg=eval_cfg.localizer_cfg,
                 ds_name=eval_cfg.ds_name,
                 rgb_intrinsics=rgb_intrinsics,
-                collect_statistics=True,
+                collect_statistics=False,
+                reset_after_n=args.reset_after_n
             )
 
-            # # Warmup and init
-            # print()
-            # continuous_tracker(rgb, sid0, vid0)
+            continuous_tracker(rgb, sid0, vid0)
 
         for sid in all_sids:
             vids = reader.map_sids_vids[sid]
@@ -253,6 +268,8 @@ if __name__ == '__main__':
             rgb = obs.rgb
             depth = obs.depth if args.use_depth else None
 
+            accepted_objects = reader.get_object_names_in_scene(sid)
+
             if args.method == 'threaded' and not args.use_cosypose_as_tracker:
                 continuous_tracker = ContinuousTracker(
                     tracker_cfg=eval_cfg.tracker_cfg,
@@ -260,8 +277,10 @@ if __name__ == '__main__':
                     ds_name=eval_cfg.ds_name,
                     rgb_intrinsics=rgb_intrinsics,
                     depth_intrinsics=depth_intrinsics,
-                    collect_statistics=True,
-                    fake_localization_delay=args.fake_localization_delay
+                    collect_statistics=False,
+                    fake_localization_delay=args.fake_localization_delay,
+                    accepted_objects=accepted_objects,
+                    reset_after_n=args.reset_after_n
                 )
 
             if args.method == 'threaded':
@@ -280,13 +299,13 @@ if __name__ == '__main__':
                 if args.use_gt_for_localization:
                     obj_poses = reader.predict_gt(sid, vids[0])
                 else:
-                    obj_poses, _ = localizer.predict(rgb, K, n_coarse=1, n_refiner=6)
+                    obj_poses, _ = localizer.predict(rgb, K, n_coarse=1, n_refiner=args.n_refiner)
 
                 tracker.detected_bodies(obj_poses)
 
             elif args.method == 'ActorSystem':
                 tp = MultiTrackerProxy()
-                poses = tp.warmup_localizer()
+                tp.warmup_localizer()
 
                 if PRECHARGE:
                     req = TrackerRequest(rgb, img_id=0)
@@ -294,6 +313,9 @@ if __name__ == '__main__':
                     tp._trigger_localizer_polling()
 
                 tp.register_for_results()
+
+            elif args.method == 'cosyonly':
+                pass
 
             else:
                 raise NotImplementedError(args.method+' not implemented')
@@ -318,7 +340,7 @@ if __name__ == '__main__':
                     obj_poses, scores = continuous_tracker(rgb, depth, obj_poses, sid, vid)
 
                     dt_method = time.perf_counter() - t
-                    if reader.check_if_in_bop19_targets(sid, vid):
+                    if reader.check_if_in_targets(sid, vid):
                         for obj_name, TCO in obj_poses.items():
                             score = scores[obj_name] if scores is not None else 1.0
                             append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt_method)
@@ -326,7 +348,7 @@ if __name__ == '__main__':
                     rate.sleep()
                 
                 elif args.method == 'cosyrefined':
-                    if reader.check_if_in_bop19_targets(sid, vid):
+                    if reader.check_if_in_targets(sid, vid):
                         t = time.perf_counter()
                         obj_poses, scores = localizer.predict(rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
                         
@@ -337,17 +359,17 @@ if __name__ == '__main__':
 
                         obj_poses, scores = tracker.get_current_preds()
                         dt_method = time.perf_counter() - t
-                        for obj_name in poses:
-                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, scores[obj_name], poses[obj_name], dt_method)
+                        for obj_name in obj_poses:
+                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, scores[obj_name], obj_poses[obj_name], dt_method)
 
                 elif args.method == 'cosyonly':
-                    if reader.check_if_in_bop19_targets(sid, vid):
+                    if reader.check_if_in_targets(sid, vid):
                         obs = observations[i]
                         t = time.perf_counter()
                         obj_poses, scores = localizer.predict(rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
                         dt_method = time.perf_counter() - t
-                        for obj_name in poses:
-                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, scores[obj_name], poses[obj_name], dt_method)
+                        for obj_name in obj_poses:
+                            append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, scores[obj_name], obj_poses[obj_name], dt_method)
 
                 elif args.method == 'trackfromstart':
                     # First image of the scene -> init with something 
@@ -357,7 +379,7 @@ if __name__ == '__main__':
                     obj_poses, scores = tracker.get_current_preds()
                     dt_method = time.perf_counter() - t
                     scores = {obj_name: 1.0 for obj_name in obj_poses}
-                    if reader.check_if_in_bop19_targets(sid, vid):
+                    if reader.check_if_in_targets(sid, vid):
                         for obj_name, TCO in obj_poses.items():
                             score = scores[obj_name] if scores is not None else 1.0
                             append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt_method)
@@ -392,7 +414,7 @@ if __name__ == '__main__':
                     for obj_name, TCO in obj_poses.items():
                         score = scores[obj_name] if scores is not None else 1.0
                         # print('  obj_name, score: ', obj_name, score)
-                    if reader.check_if_in_bop19_targets(sid, vid):
+                    if reader.check_if_in_targets(sid, vid):
                         for obj_name, TCO in obj_poses.items():
                             score = scores[obj_name] if scores is not None else 1.0
                             # print('  obj_name, score: ', obj_name, score)

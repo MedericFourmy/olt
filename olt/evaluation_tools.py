@@ -42,14 +42,20 @@ class BOPDatasetReader:
         # values: pd.Index of vids
         self.map_sids_vids = self.bs.frame_index.groupby('scene_id').view_id.apply(list).to_dict()
 
-    def get_bop19_targets(self, sid, vid):
+    def get_targets(self, sid, vid):
         return self.df_targets[(self.df_targets['scene_id'] == sid) & (self.df_targets['im_id'] == vid)]
 
-    def check_if_in_bop19_targets(self, sid, vid):
+    def get_object_ids_in_scene(self, sid):
+        return self.df_targets[self.df_targets['scene_id'] == sid].obj_id.unique()
+
+    def get_object_names_in_scene(self, sid):
+        return [obj_id2name(object_id) for object_id in self.get_object_ids_in_scene(sid)]
+
+    def check_if_in_targets(self, sid, vid):
         if self.df_targets is None:
             # No target associated to the dataset
             return True
-        return len(self.get_bop19_targets(sid, vid)) > 0
+        return len(self.get_targets(sid, vid)) > 0
     
     def get_obs(self, sid, vid):
         infos = ObservationInfos(sid, vid)

@@ -35,13 +35,15 @@ class ContinuousTracker:
         color2depth_pose: Union[np.ndarray,None] = None,
         collect_statistics: bool = False,
         fake_localization_delay: float = 0.0, 
-        accepted_objects: str = 'all'
+        accepted_objects: str = 'all',
+        reset_after_n=0
     ) -> None:
         """
         gt_predictor: needed for GT localization, lambda f(sid, vid) -> object_poses, if
         None use localizer.
         """
         self.tracker_cfg = tracker_cfg
+        self.reset_after_n = reset_after_n
         self.queue_img = Manager().Queue()
         self.queue_poses_initialization = SimpleQueue()
         self.collect_statistics = collect_statistics
@@ -73,7 +75,7 @@ class ContinuousTracker:
         K, _, _ = intrinsics2Kres(**rgb_intrinsics)
 
         localizer_args = (ds_name, localizer_cfg)
-        localizer_predict_kwargs = dict(K=K, n_coarse=1, n_refiner=6)
+        localizer_predict_kwargs = dict(K=K, n_coarse=localizer_cfg.n_coarse, n_refiner=localizer_cfg.n_refiner)
         self.p = Process(
             target=self._localize_and_track,
             args=(
@@ -94,7 +96,8 @@ class ContinuousTracker:
     def _update_main_tracker_from_localizer(self):
         # poses propagated from last detections + scores from last localization
         object_poses, scores, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
-        self.main_tracker.detected_bodies(object_poses, scores)
+        # Keep active tracks even if they go missing
+        self.main_tracker.detected_bodies(object_poses, scores, reset_after_n=self.reset_after_n)
         if self.collect_statistics:
             if self._stats_last_update_from_localizer is not None:
                 self._stats_localizer_freq = 1.0 / (
@@ -147,6 +150,7 @@ class ContinuousTracker:
         localizer_predict_kwargs=None,
         fake_localization_delay=0.0
     ):
+        
         localizer = Localizer(*localizer_args) if localizer_args is not None else None
 
         tracker = Tracker(*tracker_args)
@@ -168,9 +172,10 @@ class ContinuousTracker:
             sid0, vid0 = sid, vid
 
             # reset from scratch with all new detections
-            tracker.detected_bodies(object_poses, None)
-            tracker.set_image(img, depth)
-            tracker.track()
+            tracker.detected_bodies(object_poses, scores_loca, reset_after_n=0)
+            # tracker.StartModalities()  # Too Slow!
+            # tracker.set_image(img, depth)
+            # tracker.track()
 
             # Track
             while not queue_img.empty():
@@ -245,8 +250,6 @@ class ContinuousTrackerCosytrack:
     def _update_main_tracker_from_localizer(self):
         # poses propagated from last detections + scores from last localization
         self.data_TCO, extra_data, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
-        # print('_update_main_tracker_from_localizer')
-        # print(self.data_TCO)
         if self.collect_statistics:
             if self._stats_last_update_from_localizer is not None:
                 self._stats_localizer_freq = 1.0 / (
