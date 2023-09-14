@@ -55,7 +55,7 @@ class Localizer:
                                                                               detection_th=self.cfg.detector_threshold,
                                                                               coarse_estimates=coarse_estimates)
         except AttributeError as e:
-            return {}
+            return None, None
 
         return data_TCO, extra_data
 
@@ -65,7 +65,14 @@ class Localizer:
         return self.cosypreds2posesscores(data_TCO, extra_data)
         
     @staticmethod
-    def cosypreds2posesscores(data_TCO, extra_data):
+    def cosypreds2posesscores(data_TCO=None, extra_data=None):
+        """
+        Turn the raw cosypose predictions into object poses and scores usable by other systems.
+        """
+
+
+        if data_TCO is None:
+            return {}, {}
 
         # Send all poses to cpu to be able to process them
         poses = data_TCO.poses.cpu()

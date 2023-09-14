@@ -63,7 +63,6 @@ class ContinuousTracker:
         self.main_tracker = Tracker(*tracker_args)
         self.main_tracker.init()
 
-
         self._initialized = False
 
         # start multiprocess tracking
@@ -93,7 +92,7 @@ class ContinuousTracker:
         self.queue_img.put((None, None, None, None, None))
         self.p.join()
 
-    def _update_main_tracker_from_localizer(self):
+    def _update_main_tracker_with_correction_process(self):
         # poses propagated from last detections + scores from last localization
         object_poses, scores, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
         # Keep active tracks even if they go missing
@@ -123,14 +122,14 @@ class ContinuousTracker:
             # running the first iteration that will be slow, as we need to wait for the
             # localization results
             self.queue_img.put((img, depth, object_poses, sid, vid))
-            self._update_main_tracker_from_localizer()
+            self._update_main_tracker_with_correction_process()
             self.main_tracker.set_image(img, depth)
             self.main_tracker.track()
             self._initialized = True
             return self.main_tracker.get_current_preds()
 
         if not self.queue_poses_initialization.empty():
-            self._update_main_tracker_from_localizer()
+            self._update_main_tracker_with_correction_process()
         self.queue_img.put((img, depth, object_poses, sid, vid))
 
         self.main_tracker.set_image(img, depth)
@@ -164,8 +163,6 @@ class ContinuousTracker:
             scores_loca = None
             if object_poses is None:
                 object_poses, scores_loca = localizer.predict(img, **localizer_predict_kwargs)
-                # data_TCO, extra_data = localizer.get_cosy_predictions(img, **localizer_predict_kwargs)
-                # object_poses, scores_loca = localizer.cosypreds2posesscores(data_TCO, extra_data)
             if fake_localization_delay > 0.0:
                 time.sleep(fake_localization_delay)
 
@@ -173,9 +170,6 @@ class ContinuousTracker:
 
             # reset from scratch with all new detections
             tracker.detected_bodies(object_poses, scores_loca, reset_after_n=0)
-            # tracker.StartModalities()  # Too Slow!
-            # tracker.set_image(img, depth)
-            # tracker.track()
 
             # Track
             while not queue_img.empty():
@@ -188,8 +182,6 @@ class ContinuousTracker:
 
             # return poses from tracker and scores from localizer detections
             object_poses, _ = tracker.get_current_preds() 
-
-            # remove poses that do not have satisfactory
 
             queue_poses_initialization.put(
                 (object_poses, scores_loca, sid0, vid0, sid, vid)
@@ -247,7 +239,7 @@ class ContinuousTrackerCosytrack:
         self.queue_img.put((None, None, None, None, None))
         self.p.join()
 
-    def _update_main_tracker_from_localizer(self):
+    def _update_main_tracker_with_correction_process(self):
         # poses propagated from last detections + scores from last localization
         self.data_TCO, extra_data, sid0, vid0, sidN, vidN = self.queue_poses_initialization.get()
         if self.collect_statistics:
@@ -277,7 +269,7 @@ class ContinuousTrackerCosytrack:
             # localization results
             self.main_localizer.predict(img, **self.localizer_predict_kwargs)
             self.queue_img.put((img, depth, object_poses, sid, vid))
-            self._update_main_tracker_from_localizer()
+            self._update_main_tracker_with_correction_process()
             self._initialized = True
 
         self.queue_img.put((img, depth, object_poses, sid, vid))

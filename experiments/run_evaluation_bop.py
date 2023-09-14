@@ -25,6 +25,8 @@ if __name__ == '__main__':
         parser.add_argument('--no-inference',  dest='run_inference',  action='store_false', default=True)
         parser.add_argument('--no-evaluation', dest='run_evaluation', action='store_false', default=True)
         parser.add_argument('--img-freq',  dest='img_freq', type=int, default=30)
+        parser.add_argument('--n-corr-iterations',  dest='n_corr_iterations', type=int, default=4)
+        parser.add_argument('--n-update-iterations',  dest='n_update_iterations', type=int, default=2)
         parser.add_argument('--use-depth', dest='use_depth', action='store_true', default=False)
         parser.add_argument('--no-depth-modality', dest='no_depth_modality', action='store_true', default=False)
         parser.add_argument('--viewer-display', dest='viewer_display', action='store_true', default=False)
@@ -87,10 +89,9 @@ if __name__ == '__main__':
 
 
     if args.method in ['cosyrefined']:
-    # if args.method in ['threaded', 'cosyrefined']:
-        # YCBV refinement SETTINGS
-        eval_cfg.tracker_cfg.n_corr_iterations = 7
-        eval_cfg.tracker_cfg.n_update_iterations = 2
+        # YCBV refinement SETTINGS (from ICG supplementary)
+        eval_cfg.tracker_cfg.n_corr_iterations = args.n_corr_iterations    # 7 in supplementary
+        eval_cfg.tracker_cfg.n_update_iterations = args.n_update_iterations  # 2 in supplementary
         eval_cfg.tracker_cfg.tikhonov_parameter_rotation = 100.0
         eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000.0
         eval_cfg.tracker_cfg.region_modality.scales = [7, 4, 2]
@@ -103,12 +104,10 @@ if __name__ == '__main__':
 
     else:
         # YCBV tracking SETTINGS
-        eval_cfg.tracker_cfg.n_corr_iterations = 4
-        eval_cfg.tracker_cfg.n_update_iterations = 2
-        eval_cfg.tracker_cfg.tikhonov_parameter_rotation =    600000.0
-        eval_cfg.tracker_cfg.tikhonov_parameter_translation = 6000000.0
-        # eval_cfg.tracker_cfg.tikhonov_parameter_rotation    = 3000000.0
-        # eval_cfg.tracker_cfg.tikhonov_parameter_translation = 30000000.0
+        eval_cfg.tracker_cfg.n_corr_iterations = args.n_corr_iterations    # 7 in ICG paper
+        eval_cfg.tracker_cfg.n_update_iterations = args.n_update_iterations  # 2 in ICG paper 
+        eval_cfg.tracker_cfg.tikhonov_parameter_rotation =    600000.0     # 1000.0 in ICG paper  
+        eval_cfg.tracker_cfg.tikhonov_parameter_translation = 6000000.0    # 30000.0 in ICG paper    
         eval_cfg.tracker_cfg.region_modality.scales = [7, 4, 2]
         eval_cfg.tracker_cfg.region_modality.standard_deviations: [25.0, 15.0, 10.0]
         eval_cfg.tracker_cfg.region_modality.n_unoccluded_iterations = 0
@@ -145,7 +144,6 @@ if __name__ == '__main__':
     ###############
 
 
-
     all_sids = sorted(reader.map_sids_vids.keys())
     # all_sids = [all_sids[0]]
     # all_sids = [all_sids[2]]
@@ -162,7 +160,9 @@ if __name__ == '__main__':
                                    f'{args.img_freq}Hz',
                                    f'nr{eval_cfg.localizer_cfg.n_refiner}',
                                    modality,
+                                   f'ntrackit{eval_cfg.tracker_cfg.n_update_iterations}',
                                    )
+
         if args.use_cosypose_as_tracker:
             run_name += '-cosytrack'
         rate = Rate(args.img_freq)
