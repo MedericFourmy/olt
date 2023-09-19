@@ -40,7 +40,6 @@ class Tracker:
         if cfg.use_depth:
             assert depth_intrinsics is not None
 
-        # print('TrackerConfig:\n', cfg)
         self.cfg = cfg
         self.tmp_dir = Path(self.cfg.tmp_dir_name)
         self.obj_model_dir = Path(obj_model_dir)
@@ -54,9 +53,15 @@ class Tracker:
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
 
+        # detected bodies logic
         self.active_tracks = {}
+        self.undetected_tracks = {}
 
         self.image_set = False
+
+        # to send objects behind the camera
+        self.T_bc_back = np.eye(4)
+        self.T_bc_back[2,3] = -100
 
     def init(self):
         # Check if paths exist
@@ -81,7 +86,7 @@ class Tracker:
         self.color_camera.intrinsics = pyicg.Intrinsics(**self.rgb_intrinsics)
 
         if self.cfg.use_depth:
-            self.depth_camera = pyicg.DummyDepthCamera('cam_depth')
+            self.depth_camera = pyicg.DummyDepthCamera('cam_depth', depth_scale=self.cfg.depth_scale)
             self.depth_camera.color2depth_pose = self.color2depth_pose
             self.depth_camera.camera2world_pose = self.color_camera.depth2color_pose  # world shifted by depth2color transformation
             self.depth_camera.intrinsics = pyicg.Intrinsics(**self.depth_intrinsics)
@@ -94,16 +99,13 @@ class Tracker:
                 self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
             self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
             self.color_viewer.display_images = self.cfg.viewer_display
+            self.tracker.AddViewer(self.color_viewer)
 
-            if self.cfg.use_depth:
+            if self.cfg.use_depth and self.cfg.display_depth:
                 depth_viewer = pyicg.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
                 if self.cfg.viewer_save:
                     depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
                 depth_viewer.display_images = self.cfg.viewer_display
-
-            self.tracker.AddViewer(self.color_viewer)
-            display_depth = True
-            if self.cfg.use_depth and display_depth:
                 self.tracker.AddViewer(depth_viewer)
             #########################################
 
@@ -116,6 +118,7 @@ class Tracker:
         self.depth_models = {}
         self.depth_modalities = {} 
         self.optimizers = {}
+
         for bname, body in self.bodies.items():
             region_model_path = self.tmp_dir / (bname + '_region_model.bin')
             rm = self.cfg.region_model
@@ -127,7 +130,9 @@ class Tracker:
                                                           stride_depth_offset=rm.stride_depth_offset, 
                                                           use_random_seed=rm.use_random_seed, 
                                                           image_size=rm.image_size)
-            if self.cfg.use_depth:
+            
+
+            if self.cfg.use_depth and not self.cfg.no_depth_modality:
                 depth_model_path = self.tmp_dir / (bname + '_depth_model.bin')
                 dm = self.cfg.depth_model
                 self.depth_models[bname] = pyicg.DepthModel(bname + '_depth_model', body, depth_model_path.as_posix(),
@@ -141,21 +146,78 @@ class Tracker:
 
             # Q: Possible to create on the fly?
             self.region_modalities[bname] = pyicg.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])
+
+            # Parameters for general distribution
+            self.region_modalities[bname].n_lines = self.cfg.region_modality.n_lines
+            self.region_modalities[bname].min_continuous_distance = self.cfg.region_modality.min_continuous_distance 
+            self.region_modalities[bname].function_length = self.cfg.region_modality.function_length 
+            self.region_modalities[bname].distribution_length = self.cfg.region_modality.distribution_length 
+            self.region_modalities[bname].function_amplitude = self.cfg.region_modality.function_amplitude 
+            self.region_modalities[bname].function_slope = self.cfg.region_modality.function_slope 
+            self.region_modalities[bname].learning_rate = self.cfg.region_modality.learning_rate 
+            self.region_modalities[bname].n_global_iterations = self.cfg.region_modality.n_global_iterations 
+            self.region_modalities[bname].scales = self.cfg.region_modality.scales 
+            self.region_modalities[bname].standard_deviations = self.cfg.region_modality.standard_deviations 
             
-            self.region_modalities[bname].scales = self.cfg.region_scales
-            self.region_modalities[bname].standard_deviations = self.cfg.region_standard_deviations
+            # Parameters for histogram calculation
+            self.region_modalities[bname].n_histogram_bins = self.cfg.region_modality.n_histogram_bins
+            self.region_modalities[bname].learning_rate_f = self.cfg.region_modality.learning_rate_f
+            self.region_modalities[bname].learning_rate_b = self.cfg.region_modality.learning_rate_b
+            self.region_modalities[bname].unconsidered_line_length = self.cfg.region_modality.unconsidered_line_length
+            self.region_modalities[bname].max_considered_line_length = self.cfg.region_modality.max_considered_line_length
+
+            self.region_modalities[bname].visualize_pose_result = False
+            self.region_modalities[bname].visualize_lines_correspondence = False
+            self.region_modalities[bname].visualize_points_correspondence = False
+            self.region_modalities[bname].visualize_points_depth_image_correspondence = False
+            self.region_modalities[bname].visualize_points_depth_rendering_correspondence = False
+            self.region_modalities[bname].visualize_points_result = False
+            self.region_modalities[bname].visualize_points_histogram_image_result = False
+            self.region_modalities[bname].visualize_points_histogram_image_optimization = False
+            self.region_modalities[bname].visualize_points_optimization = False
+            self.region_modalities[bname].visualize_gradient_optimization = False
+            self.region_modalities[bname].visualize_hessian_optimization = False
+            
 
             if self.cfg.use_depth:
-                self.depth_modalities[bname] = pyicg.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
-                self.depth_modalities[bname].considered_distances = self.cfg.depth_considered_distances
-                self.depth_modalities[bname].standard_deviations = self.cfg.depth_standard_deviations
 
-                # Detect occlusion using measured depth and use it to improve estimates
-                if self.cfg.measure_occlusions:
+                if self.cfg.measure_occlusions:# or self.cfg.model_occlusions
+                    self.region_modalities[bname].min_n_unoccluded_lines = self.cfg.region_modality.min_n_unoccluded_lines
+                    self.region_modalities[bname].n_unoccluded_iterations = self.cfg.region_modality.n_unoccluded_iterations
                     self.region_modalities[bname].MeasureOcclusions(self.depth_camera)
-                    self.depth_modalities[bname].MeasureOcclusions()
+                    # Parameters for occlusion handling
+                    self.region_modalities[bname].measured_depth_offset_radius = self.cfg.region_modality.measured_depth_offset_radius
+                    self.region_modalities[bname].measured_occlusion_radius = self.cfg.region_modality.measured_occlusion_radius
+                    self.region_modalities[bname].measured_occlusion_threshold = self.cfg.region_modality.measured_occlusion_threshold
 
-            # TODO: Add only the tracked body to the viewer?
+                if not self.cfg.no_depth_modality:
+                    self.depth_modalities[bname] = pyicg.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
+
+                    # Parameters for general distribution
+                    self.depth_modalities[bname].n_points = self.cfg.depth_modality.n_points
+                    self.depth_modalities[bname].stride_length = self.cfg.depth_modality.stride_length
+                    self.depth_modalities[bname].considered_distances = self.cfg.depth_modality.considered_distances
+                    self.depth_modalities[bname].standard_deviations = self.cfg.depth_modality.standard_deviations
+
+                    self.depth_modalities[bname].visualize_correspondences_correspondence = False
+                    self.depth_modalities[bname].visualize_points_correspondence = False
+                    self.depth_modalities[bname].visualize_points_depth_rendering_correspondence = False
+                    self.depth_modalities[bname].visualize_points_optimization = False
+                    self.depth_modalities[bname].visualize_points_result = False
+
+                    if self.cfg.measure_occlusions:# or self.cfg.model_occlusions
+                        self.depth_modalities[bname].min_n_unoccluded_points = self.cfg.depth_modality.min_n_unoccluded_points
+                        self.depth_modalities[bname].n_unoccluded_iterations = self.cfg.depth_modality.n_unoccluded_iterations
+                        self.depth_modalities[bname].measured_occlusion_radius = self.cfg.depth_modality.measured_occlusion_radius
+                        self.depth_modalities[bname].measured_occlusion_threshold = self.cfg.depth_modality.measured_occlusion_threshold
+
+
+                # TODO: Model occlusions
+                # if self.cfg.model_occlusions:  
+                #     self.region_modalities[bname].modeled_depth_offset_radius = self.cfg.region_modality.modeled_depth_offset_radius
+                #     self.region_modalities[bname].modeled_occlusion_radius = self.cfg.region_modality.modeled_occlusion_radius
+                #     self.region_modalities[bname].modeled_occlusion_threshold = self.cfg.region_modality.modeled_occlusion_threshold
+
             self.renderer_geometry.AddBody(body)
 
             # Add remove optimizers?
@@ -163,16 +225,14 @@ class Tracker:
 
             # Modalities
             self.optimizers[bname].AddModality(self.region_modalities[bname])
-            if self.cfg.use_depth:
+            if self.cfg.use_depth and not self.cfg.no_depth_modality:
                 self.optimizers[bname].AddModality(self.depth_modalities[bname])
 
             self.tracker.AddOptimizer(self.optimizers[bname])
 
-
+        # execute tracking loop
         self.tracker.n_corr_iterations = self.cfg.n_corr_iterations
         self.tracker.n_update_iterations = self.cfg.n_update_iterations
-        print('n_corr_iterations: ', self.tracker.n_corr_iterations)
-        print('n_update_iterations: ', self.tracker.n_update_iterations)
 
         print('SETUP TRACKER')
         ok = self.tracker.SetUp()
@@ -181,13 +241,14 @@ class Tracker:
         print('TRACKER SETUP OK')
 
         self.iteration = 0
-
-    def set_all_bodies_behind_camera(self, except_object_names=None):
-        T_bc_back = np.eye(4)
-        T_bc_back[2,3] = -100
-        for object_name, body in self.bodies.items():
-            if except_object_names is None or object_name not in except_object_names:
-                body.body2world_pose = T_bc_back
+    
+    def set_body_behind_camera(self, oname):
+        assert oname in self.bodies
+        self.bodies[oname].body2world_pose = self.T_bc_back
+    
+    def set_all_bodies_behind_camera(self):
+        for oname in self.bodies:
+            self.set_body_behind_camera(oname)
 
     def create_bodies(self, 
                     object_model_dir: Path, 
@@ -204,7 +265,6 @@ class Tracker:
             else:
                 print('PROBLEM: less or more than one file were found')
         
-        print('accepted_objs: ', accepted_objs)
         # obj_name: 'obj_'
         bodies = {
             obj_name: pyicg.Body(
@@ -222,9 +282,9 @@ class Tracker:
 
         return bodies, object_files
 
-    def detected_bodies(self, detections: dict[str, np.array], scores=None):
+    def detected_bodies(self, object_poses: dict[str, np.array], scores=None, reset_after_n=0):
         """
-        detections: list of object id,pose pairs coming from a pose estimator like happy pose
+        object_poses: list of object name,pose pairs coming from a pose estimator like happy pose
         Multiple objects of the sane
         {
             'obj_000010': pose1,
@@ -233,55 +293,64 @@ class Tracker:
             ...
         }
 
+        scores: object_name, score dict
+        reset_after_n: number of time an active track needs to NOT be detected to be removed from active tracks
+
         FOR NOW: assume unique objects and reinitialize there pose
         """
-        # print('detections:', detections)
-        # print('scores:', scores)
 
-        # Implementation 1: just update the current estimates, 1 object per cat
+        # Pre-filter detections with accepted objects
+        if self.accepted_objs != 'all':
+            object_poses = {oname: object_poses[oname] for oname in self.accepted_objs if oname in object_poses}
+            if scores is not None:
+                scores = {oname: scores[oname] for oname in self.accepted_objs if oname in scores}
 
         # Init or scores are None -> update all without rules
         # if len(self.active_tracks) == 0 or scores is None:
-        self.set_all_bodies_behind_camera()
-        self.active_tracks = {}
-        for obj_name, T_co in detections.items():
-            if obj_name not in self.bodies:
-                continue 
-            
-            score = scores[obj_name] if scores is not None else 1.0
-            self.active_tracks[obj_name] = score
-            self.bodies[obj_name].body2world_pose = T_co
-
-        # # Implementation 2: more logic to reject bad detections if tracks are good enough
-        # else:
-        #     THRESH = 0.0
-        #     MIN_SCORE_ACTIVE_TRACKS = 0.0
-
-        #     # compare new detections score with active tracks score: 
-        #     # if score lower by THRESH to previous det, do not take into account 
-        #     object_to_remove_from_tracks_if_present = set(self.bodies.keys())
-
-        #     for obj_name, T_co in detections.items():
-        #         if obj_name not in self.bodies:
-        #             continue 
-
-        #         score = scores[obj_name] if scores is not None else 1.0
-        #         if obj_name not in self.active_tracks:
-        #             if score > MIN_SCORE_ACTIVE_TRACKS:
-        #                 self.active_tracks[obj_name] = score
-        #                 self.bodies[obj_name].body2world_pose = T_co
-        #                 object_to_remove_from_tracks_if_present.remove(obj_name)
+        if reset_after_n == 0:
+            self.set_all_bodies_behind_camera()
+            self.active_tracks = {}
+        
+            for obj_name, T_co in object_poses.items():
+                if obj_name not in self.bodies:
+                    continue 
                 
-        #         elif score > self.active_tracks[obj_name] - THRESH:
-        #             # score needs to be good enough with respect to 
-        #             # previously recorded score for an update to happen
-        #             self.active_tracks[obj_name] = score
-        #             self.bodies[obj_name].body2world_pose = T_co
-        #             object_to_remove_from_tracks_if_present.remove(obj_name)
+                score = scores[obj_name] if scores is not None else 1.0
+                self.active_tracks[obj_name] = score
+                self.bodies[obj_name].body2world_pose = T_co
 
-        #     for obj_name in object_to_remove_from_tracks_if_present:
-        #         if obj_name in self.active_tracks:
-        #             del self.active_tracks[obj_name]
+        else:
+            # check if some tracks are lost and decide to keep them active or not
+            tracks_to_remove = []
+            for obj_name in self.active_tracks:
+                if obj_name not in object_poses:
+                    # Rule: if object name not detected for a while, consider lost
+                    if obj_name not in self.undetected_tracks:
+                        self.undetected_tracks[obj_name] = 1
+                    else:
+                        self.undetected_tracks[obj_name] += 1
+                    if self.undetected_tracks[obj_name] >= reset_after_n:
+                        self.set_body_behind_camera(obj_name)
+                        tracks_to_remove.append(obj_name)
+            # print('self.undetected_tracks\n', self.undetected_tracks)
+
+            for obj_name in tracks_to_remove:
+                # print('Remove track: ', obj_name)
+                del self.active_tracks[obj_name]
+                del self.undetected_tracks[obj_name]
+
+            # Create/Update active tracks
+            for obj_name, T_co in object_poses.items():
+                if obj_name not in self.bodies:
+                    continue 
+
+                score = scores[obj_name] if scores is not None else 1.0
+                self.active_tracks[obj_name] = score
+                self.bodies[obj_name].body2world_pose = T_co
+                if obj_name in self.undetected_tracks:
+                    del self.undetected_tracks[obj_name]
+
+
 
 
         

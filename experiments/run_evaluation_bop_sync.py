@@ -146,7 +146,7 @@ for sid in all_sids:
         # scene_id, obj_id, view_id, score, TCO, dt
         score = 1
         dt = dt_localize + dt_track
-        if reader.check_if_in_bop19_targets(sid, vid):
+        if reader.check_if_in_targets(sid, vid):
             for obj_name, TCO in tracker_preds.items():
                 append_result(all_bop19_results, sid, obj_name2id(obj_name), vid, score, TCO, dt)
 
