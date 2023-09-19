@@ -4,7 +4,7 @@ import logging
 import time
 
 import numpy as np
-from olt.actor_tracker import ResultLoggerActor, TrackerRequest
+from olt.actor_tracker import ResultLoggerActor, TrackerRequest, get_name
 from olt.tracker_proxy import MultiTrackerProxy, TrackerProxy
 import pytest
 from hypothesis import given, settings, strategies as st
@@ -332,7 +332,7 @@ def test_make_pred_delay_graph(tracker_proxy):
         current_img_id = preds[-1].img_id
 
         # current_img_id = min(current_img_id+1, latest_img_id)
-        if current_img_id >= 2000:
+        if current_img_id >= 200:
             break
 
     t = np.array([pred.img_time for pred in preds])
@@ -400,5 +400,27 @@ def test_logging():
         time.sleep(0.5)
 
 
-    
+# def test_debug_perf_logging(benchmark):
+#     tp = MultiTrackerProxy(debug=False)
+#     assert isinstance(tp, MultiTrackerProxy)
 
+#     tp.warmup_localizer()
+#     tp.shutdown()
+#     print("still here")
+
+
+def test_get_name():
+    name = get_name(TrackerRequest, 1.5789)
+
+    assert "TrackerRequest" in name
+    assert "15789" in name
+ 
+def test_get_profiling_stats():
+    import pstats
+    p = pstats.Stats('0000047289_{A:TrackerActor @ ActorAddr-(T|:45237)}.profile')
+    p.sort_stats('cumulative').print_stats()
+
+def test_get_profiling_stats():
+    import pstats
+    p = pstats.Stats('0000019112_{A:ResultLoggerActor @ ActorAddr-(T|:33579)}.profile')
+    p.sort_stats('cumulative').print_stats()
