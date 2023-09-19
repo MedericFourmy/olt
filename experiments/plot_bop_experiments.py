@@ -3,6 +3,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from olt.utils import get_method_name
 import seaborn as sns
+plt.rcParams['pdf.fonttype'] = 42  # avoid pbe with fonts when submitting paperplaza
 
 # colors = sns.color_palette("deep")
 colors = sns.color_palette("colorblind")
@@ -34,13 +35,13 @@ FREQS = [5,10,15,20,30,60,90,120]
 
 training_type = 'synt+real'
 renderer_name = 'bullet'
-modalities = ['rgb']
-# modalities = ['rgb', 'rgbd']
+# modalities = ['rgb']
+modalities = ['rgb', 'rgbd']
 
 methods2labels = {
     'threaded': 'OLT (ours)',
-    'threaded-notrack': 'OLTWithIdentityTracker',
-    'trackfromstart': 'TrackerInitWithLocalizer',
+    'threaded-notrack': 'OLT-NoTracker',
+    'trackfromstart': 'Tracker-InitLocalizer',
     'cosyrefined': 'LocalizerRefinedWithTracker',
     'cosyonly': 'Localizer',
 }
@@ -50,7 +51,8 @@ colors = {
     'threaded-notrack': colors[1],  # orange
     'trackfromstart': colors[0],  # blue
     'cosyrefined': colors[7],  # black
-    'cosyonly': colors[3],  # red
+    # 'cosyonly': colors[3],  # red
+    'cosyonly': 'tab:red',  # red
 }
 
 linestyles = {
@@ -61,13 +63,14 @@ linestyles = {
     'cosyonly': '--',
 }
 
+MARKERSIZE = 10
+linewidth = 3.0
+
 
 
 def plot_ar_freq(modality):
 
-    # plt.figure(f'AR=f(freq) {modality}')
-
-
+    fig = plt.figure(f'AR=f(freq) {modality}', figsize=(6.4*1.4,4.8))
 
     # # FORMER NOT SO GOOD RESULTS
     # # Continuous implementation
@@ -90,7 +93,7 @@ def plot_ar_freq(modality):
     #     ar_lst.append(ar)
     #     available_freqs.append(freq)
 
-    # plt.plot(available_freqs, ar_lst, color='g', linestyle=linestyles[method], marker='o', markersize=5, label=f'{methods2labels[method]}+prev')
+    # plt.plot(available_freqs, ar_lst, color='g', linestyle=linestyles[method], marker='o', markersize=MARKERSIZE, label=f'{methods2labels[method]}+prev')
 
 
 
@@ -120,7 +123,7 @@ def plot_ar_freq(modality):
         ar_lst.append(ar)
         available_freqs.append(freq)
 
-    plt.plot(available_freqs, ar_lst, color=colors[method], linestyle=linestyles[method], marker='o', markersize=5, label=f'{methods2labels[method]}')
+    plt.plot(available_freqs, ar_lst, color=colors[method], linewidth=linewidth, linestyle=linestyles[method], marker='o', markersize=MARKERSIZE, label=f'{methods2labels[method]}')
 
 
     # Localizer WITH DELAY
@@ -149,7 +152,7 @@ def plot_ar_freq(modality):
         available_freqs.append(freq)
 
     method += '-notrack'
-    plt.plot(available_freqs, ar_lst, color=colors[method], linestyle=linestyles[method], marker='o', markersize=5, label=methods2labels[method])
+    plt.plot(available_freqs, ar_lst, color=colors[method], linewidth=linewidth, linestyle=linestyles[method], marker='o', markersize=MARKERSIZE, label=methods2labels[method])
 
 
     # method = 'threaded'
@@ -174,7 +177,7 @@ def plot_ar_freq(modality):
     #     ar_lst.append(ar)
     #     available_freqs.append(freq)
         
-    # plt.plot(available_freqs, ar_lst, color='y', linestyle=linestyles[method], marker='o', markersize=5, label=f'{method}-tikohigh-ntrackit{ntrackit}')
+    # plt.plot(available_freqs, ar_lst, color='y', linestyle=linestyles[method], marker='o', markersize=MARKERSIZE, label=f'{method}-tikohigh-ntrackit{ntrackit}')
 
 
     method = 'trackfromstart'
@@ -187,17 +190,17 @@ def plot_ar_freq(modality):
         scores19 = get_scores(run_name)
         if scores19 is not None:
             gt_label = 'gt' if use_gt_for_localization else 'cosy'
-            plt.hlines(scores19['bop19_average_recall'], 0, FREQS[-1], color=colors[method], linestyle=linestyles[method], label=f'{methods2labels[method]}')
+            plt.hlines(scores19['bop19_average_recall'], 0, FREQS[-1], color=colors[method], linewidth=linewidth, linestyle=linestyles[method], label=f'{methods2labels[method]}')
 
-    method = 'cosyrefined'
-    run_name = get_method_name(method, 
-                                training_type,
-                                renderer_name,
-                                modality,
-                                )
-    scores19 = get_scores(run_name)
-    if scores19 is not None:
-        plt.hlines(scores19['bop19_average_recall'], 0, FREQS[-1], color=colors[method], linestyle=linestyles[method], label=f'{methods2labels[method]}')
+    # method = 'cosyrefined'
+    # run_name = get_method_name(method, 
+    #                             training_type,
+    #                             renderer_name,
+    #                             modality,
+    #                             )
+    # scores19 = get_scores(run_name)
+    # if scores19 is not None:
+    #     plt.hlines(scores19['bop19_average_recall'], 0, FREQS[-1], color=colors[method], linestyle=linestyles[method], label=f'{methods2labels[method]}')
 
     method = 'cosyonly'
     # n_refiner_lst = [1,2,4]
@@ -208,7 +211,7 @@ def plot_ar_freq(modality):
                                     renderer_name,
                                     f'nr{n_refiner}')
         scores19 = get_scores(run_name)
-        plt.hlines(scores19['bop19_average_recall'], 0, FREQS[-1], color=colors[method], linestyles=linestyles[method], label=f'Localizer')
+        plt.hlines(scores19['bop19_average_recall'], 0, FREQS[-1], color=colors[method], linewidth=linewidth, linestyles=linestyles[method], label=f'Localizer')
 
 
     ######################################
@@ -216,17 +219,23 @@ def plot_ar_freq(modality):
     # Formatting
     ######################################
     ######################################
-
-    plt.xlabel('Playback rate (Hz)')
-    plt.ylabel('BOP Average Recall')
-    plt.ylim(0.0,1)
+    # font = {'fontname':'Comic Sans MS'}
+    font = {'fontname':'serif'}
+    
+    plt.xlabel('Images rate (Hz)',   fontsize=18, **font)
+    plt.ylabel('BOP Average Recall', fontsize=18, **font)
+    plt.ylim(0.3,1)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
     plt.grid()
-
-    # plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
-    #        ncol=2, mode="expand", borderaxespad=0.)
-    plt.legend(loc='lower center', ncol=2)
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.1),
+          ncol=2, fancybox=True, shadow=True, fontsize=18)
+    fig.subplots_adjust(bottom=0.13)
+    # fig.subplots_adjust(top=0.13)
+    
     plot_paths = [PLOTS_DIR_NAME / f'ar_f_freq_{modality}.{ext}' for ext in FILE_EXTS]
     for plot_path in plot_paths:
+        print('Saving', plot_path)
         plt.savefig(plot_path.as_posix())
 
 
