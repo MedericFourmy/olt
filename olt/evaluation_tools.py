@@ -21,7 +21,7 @@ class BOPDatasetReader:
     vid: vid
     """
 
-    def __init__(self, ds_name: str, ds_split='test', enforce_targets=False, load_depth=False):
+    def __init__(self, ds_name: str, ds_split='test', test_targets_filename='test_targets_bop19.json', enforce_targets=False, load_depth=False):
         self.ds_name = ds_name
 
         self.bs = BOPDataset(
@@ -31,7 +31,7 @@ class BOPDatasetReader:
             load_depth=load_depth
         )
 
-        targets_filename = BOP_DS_DIRS[ds_name] / "test_targets_bop19.json"
+        targets_filename = BOP_DS_DIRS[ds_name] / test_targets_filename
         if targets_filename.exists():
             self.df_targets = pd.read_json(targets_filename)
         else:
@@ -115,7 +115,8 @@ def append_result(results, scene_id, obj_id, view_id, score, TCO, dt):
 
     results.append(pred)
 
-def run_bop_evaluation(filename, results_dir_name, evaluations_dir_name):
+
+def run_bop_evaluation(filename, results_dir_name, evaluations_dir_name, targets_filename='test_targets_bop19.json', visib_gt_min=-1):
     myenv = os.environ.copy()
 
     BOP_TOOLKIT_DIR = Path(bop_toolkit_lib.__file__).parent.parent
@@ -138,6 +139,10 @@ def run_bop_evaluation(filename, results_dir_name, evaluations_dir_name):
         renderer_type,
         "--eval_path",
         eval_path,
+        '--targets_filename',
+        targets_filename,
+        '--visib_gt_min',
+        str(visib_gt_min)
     ]
     # subprocess.call(cmd, env=myenv, cwd=BOP_TOOLKIT_DIR.as_posix())
     subprocess.call(cmd, env=myenv, cwd=os.getcwd())

@@ -36,11 +36,9 @@ def make_object_dataset(object_dir: Path) -> RigidObjectDataset:
     return rigid_object_dataset
 
 
-def render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_lst_per_img, colors_lst, names=None):
-    
+def render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_lst_per_img, colors_lst, vis_dir, prefix='contour_overlay'):
+
     assert len(rgb_lst) == len(object_labels_lst) == len(T_co_lst_per_img) == len(colors_lst)
-    if names is not None:
-        assert len(rgb_lst) == len(names)
 
     object_dataset = make_object_dataset(OBJ_MODEL_DIRS[ds_name])
 
@@ -48,17 +46,15 @@ def render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_
     camera_data.TWC = Transform(np.eye(4))
 
     N_img = len(rgb_lst)
+    renderer = Panda3dSceneRenderer(object_dataset)
 
     for i in range(N_img):
+        print(f'Image {i}/{N_img}')
 
         object_labels = object_labels_lst[i]
         T_co_lst = T_co_lst_per_img[i]
         colors = colors_lst[i]
         rgb = rgb_lst[i]
-
-        print('len(object_labels)', len(object_labels))
-        print('len(T_co_lst)', len(T_co_lst))
-        print('len(colors)', len(colors))
 
         assert len(object_labels) == len(T_co_lst) == len(colors)
 
@@ -76,7 +72,8 @@ def render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_
                     color=((1.0, 1.0, 1.0, 1)),
                 ),
             ]
-            renderer = Panda3dSceneRenderer(object_dataset)
+            # Should be possible to render virtual cameras at the same time
+            # would permit to properly batch render 
             renderings = renderer.render_scene(
                 object_datas,
                 [camera_data],
@@ -89,12 +86,10 @@ def render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_
 
             plotter = BokehPlotter()
 
-            vis_dir = Path("visualizations")
-            vis_dir.mkdir(exist_ok=True)
-            fig_rgb = plotter.plot_image(rgb)
-            fig_mesh_overlay = plotter.plot_overlay(rgb, renderings.rgb)
+            # fig_rgb = plotter.plot_image(rgb)
+            # fig_mesh_overlay = plotter.plot_overlay(rgb, renderings.rgb)
             contour_overlay = make_contour_overlay(
-                rgb, renderings.rgb, dilate_iterations=1, color=color
+                rgb, renderings.rgb, dilate_iterations=3, color=color
             )["img"]
 
             contour_overlays.append(contour_overlay)
@@ -106,10 +101,7 @@ def render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_
         contour_overlay_aggr = contour_overlay_aggr.astype(np.uint8)
 
         fig_contour_overlay = plotter.plot_image(contour_overlay_aggr)
-        if names is not None:
-            export_png(fig_contour_overlay, filename=vis_dir / f"contour_overlay_{names[i]}.png")    
-        else:
-            export_png(fig_contour_overlay, filename=vis_dir / f"contour_overlay_{i}.png")
+        export_png(fig_contour_overlay, filename=vis_dir / f"{prefix}_{i:06}.png")
 
 
 
@@ -118,6 +110,9 @@ if __name__ == '__main__':
     import pinocchio as pin
 
     ds_name = 'ycbv'
+
+    vis_dir = Path("visualizations")
+    vis_dir.mkdir(exist_ok=True)
 
     # inputs
     fx, fy, cx, cy = 382, 382, 322, 249
@@ -152,4 +147,4 @@ if __name__ == '__main__':
         [T_2_12, T_2_13, T_2_4],
     ]
 
-    render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_lst_per_img, colors_lst)
+    render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, T_co_lst_per_img, colors_lst, vis_dir)
