@@ -1,71 +1,70 @@
         
 
 
-import collections
 import os
-# from olt.evaluation_tools import run_bop_evaluation
+import numpy as np
+import collections
+from PIL import Image
 from pathlib import Path
-import subprocess
-import bop_toolkit_lib
-from bop_toolkit_lib.inout import load_im, load_json, load_bop_results
+import pinocchio as pin
 from matplotlib import pyplot as plt
 
-from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR
-from PIL import Image
-import numpy as np
-
-import pinocchio as pin
+from bop_toolkit_lib.inout import load_json, load_bop_results
+from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, BOP_DS_DIRS
+from olt.evaluation_tools import run_bop_evaluation, BOPDatasetReader
 from olt.overlay_rendering import render_overlays
+from olt.utils import obj_id2name
 
 
 
-RUN_EVAL = False
+RUN_EVAL = True
 PLOT = False
-RENDER = True
-visib_gt_min = -1
+RENDER = False
+DS_NAME = 'ycbv'
 
 OBJECTS_OF_INTEREST = [15]
+OBJECTS_OF_INSTEREST_NAMES = [obj_id2name(id) for id in OBJECTS_OF_INTEREST]
 
-object_labels_lst = [
-    ['obj_000015']
-]
-
-T_1_10 = pin.XYZQUATToSE3([0.1, 0.05, 0.65,    -0.5, -0.5, 0.5, -0.5 ])
-
-name_dict = {'threaded': "ours",
-                 "trackfromstart": "tracker",
-                 "ActorSystem": "ActorSystem",
-                 "localizerwithidentitymapastracker": "localizer with identity map as tracker",
-                 "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit2-tikhohigh-mssd_ycbv-test.csv": "OLT RGB",
-                 "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit0-tikhohigh-mssd_ycbv-test.csv": "OLTWIthIidentityTracker RGB",
-                 'trackfromstart-from-gt=False-rgbd-tikhohigh-mssd_ycbv-test.csv': "TrackerInitWithLocalizer RGB",
-                 "threaded-synt+real-bullet-30Hz-nr2-rgbd-ntrackit2-tikhohigh-mssd_ycbv-test.csv": "OLT RGB-D",
-                 'trackfromstart-from-gt=False-rgb-tikhohigh-mssd_ycbv-test.csv': "TrackerInitWithLocalizer RGB-D"}
-
-
-
-def load_img(SCENE_ID=50, VIEW_ID=1):
-    DS_NAME = 'ycbv'
-    SPLIT = "test"
-    # SCENE_ID = 48
-    # VIEW_ID = 1
-
-    scene_id_str = f'{SCENE_ID:06}'
-    view_id_str = f'{VIEW_ID:06}'
-    rgb_full_path = MEGAPOSE_DATA_DIR / f'bop_datasets/{DS_NAME}/{SPLIT}/{scene_id_str}/rgb/{view_id_str}.png'
-    scene_cam_full_path = MEGAPOSE_DATA_DIR / f'bop_datasets/{DS_NAME}/{SPLIT}/{scene_id_str}/scene_camera.json'
-    d_scene_camera = load_json(scene_cam_full_path)
-    K = d_scene_camera[str(VIEW_ID)]['cam_K']
-    K = np.array(K).reshape((3,3))
-
-    im = Image.open(rgb_full_path)
-    rgb = np.array(im, dtype=np.uint8)
-    return ds_name, [rgb], K, rgb.shape[0], rgb.shape[1], 
+# 01 002_master_chef_can
+# 02 003_cracker_box
+# 03 004_sugar_box
+# 04 005_tomato_soup_can
+# 05 006_mustard_bottle
+# 06 007_tuna_fish_can
+# 07 008_pudding_box
+# 08 009_gelatin_box
+# 09 010_potted_meat_can
+# 10 011_banana
+# 11 019_pitcher_base
+# 12 021_bleach_cleanser
+# 13 024_bowl
+# 14 025_mug
+# 15 035_power_drill
+# 16 036_wood_block
+# 17 037_scissors
+# 18 040_large_marker
+# 19 051_large_clamp
+# 20 052_extra_large_clamp
+# 21 061_foam_brick
 
 
-def render_overlays_for_scene(scene_id, T_co_lst_per_img, name_prefix=""):
+name_dict = {
+    'threaded': "ours",
+    "trackfromstart": "tracker",
+    "ActorSystem": "ActorSystem",
+    "localizerwithidentitymapastracker": "localizer with identity map as tracker",
+    "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit2-tikhohigh-mssd_ycbv-test.csv": "OLT RGB",
+    "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit0-tikhohigh-mssd_ycbv-test.csv": "OLTWIthIidentityTracker RGB",
+    'trackfromstart-from-gt=False-rgbd-tikhohigh-mssd_ycbv-test.csv': "TrackerInitWithLocalizer RGB",
+    "threaded-synt+real-bullet-30Hz-nr2-rgbd-ntrackit2-tikhohigh-mssd_ycbv-test.csv": "OLT RGB-D",
+    'trackfromstart-from-gt=False-rgb-tikhohigh-mssd_ycbv-test.csv': "TrackerInitWithLocalizer RGB-D"}
 
-    number_imgs = T_co_lst_per_img.__len__()
+reader = BOPDatasetReader(DS_NAME, load_depth=False)
+
+
+def render_overlays_for_scene(ds_name, scene_id, T_co_lst_per_img, name_prefix=""):
+
+    number_imgs = len(T_co_lst_per_img)
 
     colors_lst = [
         [(0, 255, 0)] for _ in range(number_imgs)
@@ -74,95 +73,72 @@ def render_overlays_for_scene(scene_id, T_co_lst_per_img, name_prefix=""):
     for i in range(1, number_imgs):
         if i >= 260:
             break
-        ds_name, rgb_lst, K, height, width  = load_img(scene_id, i)
+        
+        vid = reader.map_sids_vids[scene_id]
+        obs = reader.get_obs(scene_id, vid)
+        K = obs.camera_data.K
+        height, width = obs.camera_data.resolution
+        rgb = obs.rgb        
 
-        render_overlays(ds_name, rgb_lst, K, height, width, object_labels_lst, [T_co_lst_per_img[i]], [colors_lst[i]], [f"{name_prefix}_{ds_name}_ds_sid_{scene_id}_vid_{i}"])
-
-
-
-def run_bop_evaluation(filename, results_dir_name, evaluations_dir_name, targets_file_name):
-    myenv = os.environ.copy()
-
-    BOP_TOOLKIT_DIR = Path(bop_toolkit_lib.__file__).parent.parent
-    POSE_EVAL_SCRIPT_PATH = BOP_TOOLKIT_DIR / "scripts/eval_bop19_pose.py"
-
-    # Put results in current directory
-    root_dir = Path(os.getcwd())
-    results_path = root_dir / results_dir_name
-    eval_path = root_dir / evaluations_dir_name
-
-    renderer_type = 'vispy'  # other options: 'cpp', 'python'
-    cmd = [
-        "python",
-        str(POSE_EVAL_SCRIPT_PATH),
-        "--result_filenames",
-        filename,
-        "--results_path",
-        results_path,
-        "--renderer_type",
-        renderer_type,
-        "--eval_path",
-        eval_path,
-        '--targets_filename',
-        targets_file_name,
-        '--visib_gt_min',
-        str(visib_gt_min)
-    ]
-    # subprocess.call(cmd, env=myenv, cwd=BOP_TOOLKIT_DIR.as_posix())
-    subprocess.call(cmd, env=myenv, cwd=os.getcwd())
+        # TODO: put after the for loop and pass longer lists to be faster
+        render_overlays(ds_name, [rgb], K, height, width, OBJECTS_OF_INSTEREST_NAMES, 
+                        [T_co_lst_per_img[i]], [colors_lst[i]], 
+                        [f"{name_prefix}_{ds_name}_ds_sid_{scene_id}_vid_{i}"])
 
 
-
-def write_targets_file(img_ids, objs, scene_id):
+def get_target_file_string(reader: BOPDatasetReader, scene_ids):
     s = ''
     s += '['
-    for img_id in img_ids:
-        for obj in objs:
-            s += "\n"
-            s += f'{{"im_id": {img_id}, "inst_count": 1, "obj_id": {obj}, "scene_id": {scene_id}}},'
+
+    for sid in scene_ids:
+        object_ids = reader.get_object_ids_in_scene(sid)
+        view_ids = reader.map_sids_vids[sid]
+        for vid in view_ids:
+            for obj in object_ids:
+                s += "\n"
+                # Assume only 1 object of each category per scene
+                s += f'{{"im_id": {vid}, "inst_count": 1, "obj_id": {obj}, "scene_id": {sid}}},'
 
     s = s[:-1] # remove last comma
     s += '\n]\n'
     return s
 
-# filenames = ["trackfromstart-from-gt=False-rgb-scene50_ycbv-test.csv", 
-#              "ActorSystem-synt+real-bullet-15Hz-rgb-scene50_ycbv-test.csv", 
-#              "threaded-synt+real-bullet-15Hz-rgb-scene50_ycbv-test.csv"]
-filenames = ["threaded-synt+real-bullet-30Hz-nr2-rgbd-ntrackit2-tikhohigh-mssd_ycbv-test.csv", 
-             "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit0-tikhohigh-mssd_ycbv-test.csv", 
-             "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit2-tikhohigh-mssd_ycbv-test.csv",
-             "trackfromstart-from-gt=False-rgbd-tikhohigh-mssd_ycbv-test.csv",
-             "trackfromstart-from-gt=False-rgb-tikhohigh-mssd_ycbv-test.csv"]
+
+# RESULTS_FILENAMES = [
+#     "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit0-tikhohigh-mssd_ycbv-test.csv", 
+#     "threaded-synt+real-bullet-30Hz-nr2-rgbd-ntrackit2-tikhohigh-mssd_ycbv-test.csv", 
+#     "threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit2-tikhohigh-mssd_ycbv-test.csv",
+#     "trackfromstart-from-gt=False-rgbd-tikhohigh-mssd_ycbv-test.csv",
+#     "trackfromstart-from-gt=False-rgb-tikhohigh-mssd_ycbv-test.csv"
+# ]
 
 
-filename = filenames[1]
+RESULTS_FILENAMES = [
+    'threaded-synt+real-bullet-30Hz-nr2-rgb-ntrackit2-tikhohigh-mssd_ycbv-test.csv',
+]
 
-scene_id = 50
 
-scene_objects = {50: [2,4,5,10,15]}
-scene_len = {50: 1916}
 
-targets_file = f"/home/behrejan/local_data_happypose/bop_datasets/ycbv/test_targets_all_scene_{scene_id}.json"
-with open(targets_file, 'w') as f:
-    f.write(write_targets_file(range(1,scene_len[scene_id] + 1), scene_objects[scene_id], scene_id))
-
-ds_name = 'ycbv'
+all_scene_ids = list(reader.map_sids_vids.key())
+all_scene_ids = [all_scene_ids[2]]
+targets_file = BOP_DS_DIRS[DS_NAME] / f"test_targets_all_views.json"
+with open(targets_file.as_posix(), 'w') as f:
+    f.write(get_target_file_string(reader, scene_ids=all_scene_ids))
 
 
 RESULTS_DIR_NAME = Path('results')
-EVALUATIONS_DIR_NAME = Path('evaluations')
+EVALUATIONS_DIR_NAME = Path('evaluations_viz')
 RESULTS_DIR_NAME.mkdir(exist_ok=True)
 
 
 if RUN_EVAL:
-    for filename in filenames:
-        result_bop_eval_filename = filename 
+    for result_bop_eval_filename in RESULTS_FILENAMES:
         result_bop_eval_path = RESULTS_DIR_NAME / result_bop_eval_filename
-        run_bop_evaluation(result_bop_eval_filename, RESULTS_DIR_NAME, EVALUATIONS_DIR_NAME, os.path.basename(targets_file))
+        run_bop_evaluation(result_bop_eval_filename, RESULTS_DIR_NAME, EVALUATIONS_DIR_NAME, targets_file.name)
 
 if RENDER:
 
-    for i, filename in enumerate(filenames):
+    for i, filename in enumerate(RESULTS_FILENAMES):
         # just for rendering the next one now
         if i != 4:
             continue
@@ -181,8 +157,8 @@ if RENDER:
                 T_co_lst_per_img.append([T_co])
 
             
-
-        render_overlays_for_scene(scene_id, T_co_lst_per_img, name_prefix=name_dict[filename].replace(" ", "-"))
+        # TODO: loop over scenes?
+        render_overlays_for_scene(DS_NAME, all_scene_ids[0], T_co_lst_per_img, name_prefix=name_dict[filename].replace(" ", "-"))
 
         print("still here")
         # run_bop_evaluation(result_bop_eval_filename, RESULTS_DIR_NAME, EVALUATIONS_DIR_NAME, os.path.basename(targets_file))
@@ -222,8 +198,6 @@ def plot_error_over_time(paths, names, objects=None):
             plot_errs[err["obj_id"]]["im_id"].append(err["im_id"])
             plot_errs[err["obj_id"]]["err"].append(list(err["errors"].values())[0][0])
 
-    
-
         for obj_id, data in plot_errs.items():
             if obj_id not in obj_ids:
                 continue
@@ -246,7 +220,7 @@ if PLOT:
     names = []
     
     
-    for filename in filenames:
+    for filename in RESULTS_FILENAMES:
         result_bop_eval_filename = filename 
         result_bop_eval_path = RESULTS_DIR_NAME / result_bop_eval_filename
         # run_bop_evaluation(result_bop_eval_filename, RESULTS_DIR_NAME, EVALUATIONS_DIR_NAME, os.path.basename(targets_file))
