@@ -12,7 +12,7 @@ from PIL import Image
 import logging
 
 from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig, logcfg
-from pyicg import Body
+from pym3t import Body
 
 import functools
 import cProfile, pstats

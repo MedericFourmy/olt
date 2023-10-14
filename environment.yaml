@@ -28,7 +28,7 @@ dependencies:
   - git
   - cmake
   - numpy
-  # extra for pyicg
+  # extra for pym3t
   - opencv
   - compilers
   - scikit-build
@@ -99,7 +99,9 @@ dependencies:
       - webdataset
       - roma 
       - torchgeometry
+      - git+https://github.com/MedericFourmy/pym3t.git
       # extra for olt
       - thespian
       - pytest-benchmark
       - hypothesis
+

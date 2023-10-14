@@ -1,7 +1,7 @@
 """
 
 Vocabulary
-- body name: name of a specific instance of a object in pyicg
+- body name: name of a specific instance of a object in pym3t
 
 Notations
 - T_co: SE(3) transformation that translate and rotate a vector from frame o to frame c: c_v = T_co @ o_v
@@ -13,7 +13,8 @@ import numpy as np
 from pathlib import Path
 import shutil
 from typing import Union
-import pyicg
+import pym3t
+
 
 from olt.config import TrackerConfig
 
@@ -75,26 +76,26 @@ class Tracker:
 
 
         # Main class
-        self.tracker = pyicg.Tracker('tracker', synchronize_cameras=False)
+        self.tracker = pym3t.Tracker('tracker', synchronize_cameras=False)
         
         # Renderer for preprocessing
-        self.renderer_geometry = pyicg.RendererGeometry('renderer geometry')
+        self.renderer_geometry = pym3t.RendererGeometry('renderer geometry')
 
-        self.color_camera = pyicg.DummyColorCamera('cam_color')
+        self.color_camera = pym3t.DummyColorCamera('cam_color')
         self.color_camera.color2depth_pose = self.color2depth_pose
         self.color_camera.camera2world_pose = np.eye(4)  # color camera fixed at the origin of the world
-        self.color_camera.intrinsics = pyicg.Intrinsics(**self.rgb_intrinsics)
+        self.color_camera.intrinsics = pym3t.Intrinsics(**self.rgb_intrinsics)
 
         if self.cfg.use_depth:
-            self.depth_camera = pyicg.DummyDepthCamera('cam_depth', depth_scale=self.cfg.depth_scale)
+            self.depth_camera = pym3t.DummyDepthCamera('cam_depth', depth_scale=self.cfg.depth_scale)
             self.depth_camera.color2depth_pose = self.color2depth_pose
             self.depth_camera.camera2world_pose = self.color_camera.depth2color_pose  # world shifted by depth2color transformation
-            self.depth_camera.intrinsics = pyicg.Intrinsics(**self.depth_intrinsics)
+            self.depth_camera.intrinsics = pym3t.Intrinsics(**self.depth_intrinsics)
 
         if self.cfg.viewer_display or self.cfg.viewer_save:
             #########################################
             # Viewers
-            self.color_viewer = pyicg.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
+            self.color_viewer = pym3t.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
             if self.cfg.viewer_save:
                 self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
             self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
@@ -102,7 +103,7 @@ class Tracker:
             self.tracker.AddViewer(self.color_viewer)
 
             if self.cfg.use_depth and self.cfg.display_depth:
-                depth_viewer = pyicg.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
+                depth_viewer = pym3t.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
                 if self.cfg.viewer_save:
                     depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
                 depth_viewer.display_images = self.cfg.viewer_display
@@ -110,7 +111,7 @@ class Tracker:
             #########################################
 
         # bodies: create 1 for each object model with body names = body ids
-        self.bodies, self.object_files = self.create_bodies(self.obj_model_dir, self.accepted_objs, self.geometry_unit_in_meter_ycbv_urdf)
+        self.bodies, self.links, self.object_files = self.create_bodies(self.obj_model_dir, self.accepted_objs, self.geometry_unit_in_meter_ycbv_urdf)
         self.set_all_bodies_behind_camera()
 
         self.region_models = {}
@@ -119,36 +120,42 @@ class Tracker:
         self.depth_modalities = {} 
         self.optimizers = {}
 
-        for bname, body in self.bodies.items():
+        for bname in self.bodies:
+            body = self.bodies[bname]
+            link = self.links[bname]
+
+            self.renderer_geometry.AddBody(body)
+
             region_model_path = self.tmp_dir / (bname + '_region_model.bin')
             rm = self.cfg.region_model
-            self.region_models[bname] = pyicg.RegionModel(bname + '_region_model', body, region_model_path.as_posix(),
+            self.region_models[bname] = pym3t.RegionModel(bname + '_region_model', body, region_model_path.as_posix(),
                                                           sphere_radius=rm.sphere_radius, 
                                                           n_divides=rm.n_divides, 
-                                                          n_points=rm.n_points, 
+                                                          n_points_max=rm.n_points_max, 
                                                           max_radius_depth_offset=rm.max_radius_depth_offset, 
                                                           stride_depth_offset=rm.stride_depth_offset, 
                                                           use_random_seed=rm.use_random_seed, 
                                                           image_size=rm.image_size)
-            
 
             if self.cfg.use_depth and not self.cfg.no_depth_modality:
                 depth_model_path = self.tmp_dir / (bname + '_depth_model.bin')
                 dm = self.cfg.depth_model
-                self.depth_models[bname] = pyicg.DepthModel(bname + '_depth_model', body, depth_model_path.as_posix(),
+                self.depth_models[bname] = pym3t.DepthModel(bname + '_depth_model', body, depth_model_path.as_posix(),
                                                             sphere_radius=dm.sphere_radius, 
                                                             n_divides=dm.n_divides, 
-                                                            n_points=dm.n_points, 
+                                                            n_points_max=dm.n_points_max, 
                                                             max_radius_depth_offset=dm.max_radius_depth_offset, 
                                                             stride_depth_offset=dm.stride_depth_offset, 
                                                             use_random_seed=dm.use_random_seed, 
                                                             image_size=dm.image_size)
 
             # Q: Possible to create on the fly?
-            self.region_modalities[bname] = pyicg.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])
+            self.region_modalities[bname] = pym3t.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])
 
             # Parameters for general distribution
-            self.region_modalities[bname].n_lines = self.cfg.region_modality.n_lines
+            self.region_modalities[bname].n_lines_max = self.cfg.region_modality.n_lines_max
+            self.region_modalities[bname].use_adaptive_coverage = self.cfg.region_modality.use_adaptive_coverage
+            self.region_modalities[bname].reference_contour_length = self.cfg.region_modality.reference_contour_length 
             self.region_modalities[bname].min_continuous_distance = self.cfg.region_modality.min_continuous_distance 
             self.region_modalities[bname].function_length = self.cfg.region_modality.function_length 
             self.region_modalities[bname].distribution_length = self.cfg.region_modality.distribution_length 
@@ -191,10 +198,12 @@ class Tracker:
                     self.region_modalities[bname].measured_occlusion_threshold = self.cfg.region_modality.measured_occlusion_threshold
 
                 if not self.cfg.no_depth_modality:
-                    self.depth_modalities[bname] = pyicg.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
+                    self.depth_modalities[bname] = pym3t.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
 
                     # Parameters for general distribution
-                    self.depth_modalities[bname].n_points = self.cfg.depth_modality.n_points
+                    self.depth_modalities[bname].n_points_max = self.cfg.depth_modality.n_points_max
+                    self.depth_modalities[bname].use_adaptive_coverage = self.cfg.depth_modality.use_adaptive_coverage
+                    self.depth_modalities[bname].reference_surface_area = self.cfg.depth_modality.reference_surface_area
                     self.depth_modalities[bname].stride_length = self.cfg.depth_modality.stride_length
                     self.depth_modalities[bname].considered_distances = self.cfg.depth_modality.considered_distances
                     self.depth_modalities[bname].standard_deviations = self.cfg.depth_modality.standard_deviations
@@ -218,15 +227,12 @@ class Tracker:
                 #     self.region_modalities[bname].modeled_occlusion_radius = self.cfg.region_modality.modeled_occlusion_radius
                 #     self.region_modalities[bname].modeled_occlusion_threshold = self.cfg.region_modality.modeled_occlusion_threshold
 
-            self.renderer_geometry.AddBody(body)
+            link.AddModality(self.region_modalities[bname])
+            if self.cfg.use_depth and not self.cfg.no_depth_modality:
+                link.AddModality(self.region_modalities[bname])
 
             # Add remove optimizers?
-            self.optimizers[bname] = pyicg.Optimizer(bname+'_optimizer', self.cfg.tikhonov_parameter_rotation, self.cfg.tikhonov_parameter_translation)
-
-            # Modalities
-            self.optimizers[bname].AddModality(self.region_modalities[bname])
-            if self.cfg.use_depth and not self.cfg.no_depth_modality:
-                self.optimizers[bname].AddModality(self.depth_modalities[bname])
+            self.optimizers[bname] = pym3t.Optimizer(bname+'_optimizer', link, self.cfg.tikhonov_parameter_rotation, self.cfg.tikhonov_parameter_translation)
 
             self.tracker.AddOptimizer(self.optimizers[bname])
 
@@ -245,6 +251,7 @@ class Tracker:
     def set_body_behind_camera(self, oname):
         assert oname in self.bodies
         self.bodies[oname].body2world_pose = self.T_bc_back
+        self.links[oname].link2world_pose = self.T_bc_back
     
     def set_all_bodies_behind_camera(self):
         for oname in self.bodies:
@@ -253,7 +260,7 @@ class Tracker:
     def create_bodies(self, 
                     object_model_dir: Path, 
                     accepted_objs: Union[set[str],str], 
-                    geometry_unit_in_meter: float) -> dict[str, pyicg.Body]:
+                    geometry_unit_in_meter: float) -> dict[str, pym3t.Body]:
         
         # Bodies
         object_files = {}
@@ -267,20 +274,24 @@ class Tracker:
         
         # obj_name: 'obj_'
         bodies = {
-            obj_name: pyicg.Body(
+            obj_name: pym3t.Body(
                 name=obj_name,
                 geometry_path=obj_path.as_posix(),
                 geometry_unit_in_meter=geometry_unit_in_meter,
                 geometry_counterclockwise=True,
                 geometry_enable_culling=True,
-                geometry2body_pose=np.eye(4),
-                silhouette_id=0
+                geometry2body_pose=np.eye(4)
             )
             for obj_name, obj_path in object_files.items()
             if accepted_objs == 'all' or obj_name in accepted_objs
         }
 
-        return bodies, object_files
+        links = {
+            body_name: pym3t.Link(body_name + '_link', body)
+            for body_name, body in bodies.items()
+        }
+
+        return bodies, links, object_files
 
     def detected_bodies(self, object_poses: dict[str, np.array], scores=None, reset_after_n=0):
         """
@@ -318,6 +329,7 @@ class Tracker:
                 score = scores[obj_name] if scores is not None else 1.0
                 self.active_tracks[obj_name] = score
                 self.bodies[obj_name].body2world_pose = T_co
+                self.links[obj_name].link2world_pose = T_co
 
         else:
             # check if some tracks are lost and decide to keep them active or not
@@ -347,19 +359,9 @@ class Tracker:
                 score = scores[obj_name] if scores is not None else 1.0
                 self.active_tracks[obj_name] = score
                 self.bodies[obj_name].body2world_pose = T_co
+                self.links[obj_name].link2world_pose = T_co
                 if obj_name in self.undetected_tracks:
                     del self.undetected_tracks[obj_name]
-
-
-
-
-        
-        
-    def update_K(self, K, width, height):
-        """
-        Some objects of pyicg do not allow update of K without some modifications (e.g. RendererGeometry).
-        """
-        raise NotImplementedError('update_K')
 
     def set_image(self, rgb: np.array, depth: Union[np.array,None] = None):
         self.color_camera.image = rgb
@@ -375,34 +377,19 @@ class Tracker:
     def track(self):
         assert self.image_set, "No image was set yet! Call tracker.set_image(img)"
         if self.iteration == 0:
-            print('StartModalities!')
-            self.tracker.StartModalities(self.iteration)
+            # print('StartModalities!')
+            # self.tracker.StartModalities(self.iteration)
+            print('ExecuteStartingStep!')
+            self.tracker.ExecuteStartingStep(self.iteration)
+            
 
         t = time.perf_counter()
-        self.tracker.ExecuteTrackingCycle(self.iteration)
+        self.tracker.ExecuteTrackingStep(self.iteration)
         dt = time.perf_counter() - t
 
         self.iteration += 1
 
         return dt
-
-    def update_intrinsics(self, rgb_intrinsics):
-        raise NotImplementedError('update_intrinsics not implementable with current ICG version')
-        self.rgb_intrinsics = rgb_intrinsics
-
-        # camera
-        self.color_camera.rgb_intrinsics = pyicg.Intrinsics(**rgb_intrinsics)
-
-        # modalities
-        for rm in self.region_modalities.values:
-            rm.PrecalculateCameraVariables()  
-
-        # viewers
-        # TODO: not possible right now!
-
-        # FocusedRenderer (for occlussions)
-        # TODO: not possible right now!
-
 
     def update_viewers(self):
         t = time.perf_counter()
@@ -413,6 +400,11 @@ class Tracker:
     def get_current_preds(self):
         preds = {}
         for obj_name in self.active_tracks.keys():
+            # print(obj_name)
+            # print('body2world_pose')
+            # print(self.bodies[obj_name].body2world_pose)
+            # print('link2world_pose')
+            # print(self.links[obj_name].link2world_pose)
             preds[obj_name] = self.bodies[obj_name].body2world_pose
 
         return preds, self.active_tracks

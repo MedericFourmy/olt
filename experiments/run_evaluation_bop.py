@@ -54,13 +54,15 @@ if __name__ == '__main__':
     
     assert args.method in ['threaded', 'cosyonly', 'cosyrefined', 'ActorSystem', 'trackfromstart', 'only_tracker_init'], f'{args.method} is wrong'
 
+    import sys
     import time
     from pathlib import Path
     import numpy as np
+    import pinocchio as pin
     if args.method == "ActorSystem":
         from olt.actor_tracker import TrackerRequest
         from olt.tracker_proxy import MultiTrackerProxy
-    if args.method in ['cosyonly', 'cosyrefined', 'trackfromstart']:
+    if args.method in ['cosyonly', 'cosyrefined', 'trackfromstart', 'only_tracker_init']:
         from olt.tracker import Tracker
         from olt.localizer import Localizer
     if args.method == 'threaded':
@@ -202,6 +204,7 @@ if __name__ == '__main__':
         depth_intrinsics = rgb_intrinsics if args.use_depth else None  # same for YCBV
         tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, rgb_intrinsics, depth_intrinsics, np.eye(4))
         tracker.init()
+        sys.exit(0)
     
     else:
         raise ValueError(f'Method {args.method} not defined')

@@ -21,7 +21,7 @@ default_list = lambda l: field(default_factory=lambda: l)
 class ModelConfig:
     sphere_radius: float = 0.8
     n_divides: int = 4 
-    n_points: int = 200
+    n_points_max: int = 200
     max_radius_depth_offset: float = 0.05
     stride_depth_offset: float = 0.002 
     use_random_seed: bool = False
@@ -32,7 +32,9 @@ class ModelConfig:
 class RegionModalityConfig:
 
     # Parameters for general distribution
-    n_lines: int = 200
+    n_lines_max: int = 200
+    use_adaptive_coverage: bool = False
+    reference_contour_length: float = 0.0
     min_continuous_distance: float = 3.0
     function_length: int = 8
     distribution_length: int = 12
@@ -66,7 +68,9 @@ class RegionModalityConfig:
 @dataclass
 class DepthModalityConfig:
     # Parameters for general distribution
-    n_points: int = 200
+    n_points_max: int = 200
+    use_adaptive_coverage: bool = False
+    reference_surface_area: float = 0.0
     stride_length: float = 0.005
     considered_distances: list[float] = default_list([0.05, 0.02, 0.01])
     standard_deviations: list[float] = default_list([0.05, 0.03, 0.02])
@@ -84,10 +88,8 @@ class DepthModalityConfig:
     min_n_unoccluded_points: int = 0
 
 
-
-
 """
-Default value taken from ICG YCBV evaluation
+Default value taken from M3T YCBV evaluation
 """
 @dataclass
 class TrackerConfig:
