@@ -391,20 +391,17 @@ class Tracker:
 
         return dt
 
-    def update_viewers(self):
+    def update_viewers(self, it=None):
         t = time.perf_counter()
-        self.tracker.UpdateViewers(self.iteration)
+        if it is None:
+            it = self.iteration
+        self.tracker.UpdateViewers(it)
         dt = time.perf_counter() - t
         return dt
 
     def get_current_preds(self):
         preds = {}
         for obj_name in self.active_tracks.keys():
-            # print(obj_name)
-            # print('body2world_pose')
-            # print(self.bodies[obj_name].body2world_pose)
-            # print('link2world_pose')
-            # print(self.links[obj_name].link2world_pose)
             preds[obj_name] = self.bodies[obj_name].body2world_pose
 
         return preds, self.active_tracks

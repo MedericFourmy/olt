@@ -11,7 +11,7 @@ from datetime import timedelta
 from PIL import Image
 import logging
 
-from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig, logcfg
+from olt.config import OBJ_MODEL_DIRS, HAPPYPOSE_DATA_DIR, TrackerConfig, LocalizerConfig, logcfg
 from pym3t import Body
 
 import functools
@@ -135,7 +135,7 @@ class TrackerRequest(object):
     
     @staticmethod
     def _get_sample_img_msg(img_nmb:int = 1):
-        rgb_full_path = MEGAPOSE_DATA_DIR / f'bop_datasets/ycbv/test/000048/rgb/{img_nmb:06}.png'
+        rgb_full_path = HAPPYPOSE_DATA_DIR / f'bop_datasets/ycbv/test/000048/rgb/{img_nmb:06}.png'
         im = Image.open(rgb_full_path)
         rgb = np.array(im, dtype=np.uint8)
 
@@ -576,7 +576,7 @@ class LocalizerActor(Actor):
 
         self.buffer = None
 
-        from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
+        from olt.config import OBJ_MODEL_DIRS, HAPPYPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
         from olt.localizer import Localizer
 
         DS_NAME = 'ycbv'
@@ -596,8 +596,8 @@ class LocalizerActor(Actor):
 
         
 
-        rgb_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/rgb/000001.png'
-        scene_cam_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/scene_camera.json'
+        rgb_full_path = HAPPYPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/rgb/000001.png'
+        scene_cam_full_path = HAPPYPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/scene_camera.json'
         d_scene_camera = json.loads(scene_cam_full_path.read_text())
         K = d_scene_camera[str(VIEW_ID)]['cam_K']
         self.K = np.array(K).reshape((3,3))
@@ -712,7 +712,7 @@ class TrackerManager(Actor):
 
 class TrackerActor(Actor):
     def __init__(self, *args, **kwargs):
-        from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
+        from olt.config import OBJ_MODEL_DIRS, HAPPYPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
         from olt.tracker import Tracker
         from olt.utils import Kres2intrinsics, print_mem_usage
 
@@ -725,8 +725,8 @@ class TrackerActor(Actor):
         SCENE_ID = 48
         VIEW_ID = 1
 
-        rgb_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/rgb/000001.png'
-        scene_cam_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/scene_camera.json'
+        rgb_full_path = HAPPYPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/rgb/000001.png'
+        scene_cam_full_path = HAPPYPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/scene_camera.json'
         d_scene_camera = json.loads(scene_cam_full_path.read_text())
         K = d_scene_camera[str(VIEW_ID)]['cam_K']
         K = np.array(K).reshape((3,3))

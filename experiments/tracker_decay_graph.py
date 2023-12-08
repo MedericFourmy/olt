@@ -10,7 +10,7 @@ import pinocchio as pin
 from matplotlib import pyplot as plt
 
 from bop_toolkit_lib.inout import load_json, load_bop_results
-from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, BOP_DS_DIRS
+from olt.config import OBJ_MODEL_DIRS, HAPPYPOSE_DATA_DIR, BOP_DS_DIRS
 from olt.evaluation_tools import run_bop_evaluation, BOPDatasetReader
 from olt.overlay_rendering import render_overlays
 from olt.utils import obj_id2name

@@ -26,8 +26,7 @@ class Localizer:
         # Cosypose
         cosy_wrapper = CosyPoseWrapper(dataset_name=self.obj_dataset, 
                                        n_workers=cfg.n_workers, 
-                                       renderer_name=cfg.renderer_name,
-                                       training_type=cfg.training_type)
+                                       )
         self.pose_estimator = cosy_wrapper.pose_predictor
 
         # Megapose (TODO)

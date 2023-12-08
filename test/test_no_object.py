@@ -5,7 +5,7 @@ from PIL import Image
 from olt.tracker import Tracker
 from olt.localizer import Localizer
 from olt.utils import Kres2intrinsics
-from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, LocalizerConfig
+from olt.config import OBJ_MODEL_DIRS, HAPPYPOSE_DATA_DIR, LocalizerConfig
 
 
 def test_obj_in_img():
@@ -22,8 +22,8 @@ def test_obj_in_img():
 
     scene_id_str = f'{SCENE_ID:06}'
     view_id_str = f'{VIEW_ID:06}'
-    rgb_full_path = MEGAPOSE_DATA_DIR / f'bop_datasets/ycbv/test/{scene_id_str}/rgb/{view_id_str}.png'
-    scene_cam_full_path = MEGAPOSE_DATA_DIR / f'bop_datasets/ycbv/test/{scene_id_str}/scene_camera.json'
+    rgb_full_path = HAPPYPOSE_DATA_DIR / f'bop_datasets/ycbv/test/{scene_id_str}/rgb/{view_id_str}.png'
+    scene_cam_full_path = HAPPYPOSE_DATA_DIR / f'bop_datasets/ycbv/test/{scene_id_str}/scene_camera.json'
     d_scene_camera = json.loads(scene_cam_full_path.read_text())
     K = d_scene_camera[str(VIEW_ID)]['cam_K']
     K = np.array(K).reshape((3,3))

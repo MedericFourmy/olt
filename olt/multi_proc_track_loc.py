@@ -13,7 +13,7 @@ from PIL import Image
 from olt.tracker import Tracker
 
 from olt.utils import Kres2intrinsics, print_mem_usage
-from olt.config import OBJ_MODEL_DIRS, MEGAPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
+from olt.config import OBJ_MODEL_DIRS, HAPPYPOSE_DATA_DIR, TrackerConfig, LocalizerConfig
 
 from queue import Empty, Full
 
@@ -33,8 +33,8 @@ VIEW_ID = 1
 
 scene_id_str = '{SCENE_ID:06}'
 view_id_str = '{VIEW_ID:06}'
-rgb_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/rgb/000001.png'
-scene_cam_full_path = MEGAPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/scene_camera.json'
+rgb_full_path = HAPPYPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/rgb/000001.png'
+scene_cam_full_path = HAPPYPOSE_DATA_DIR / 'bop_datasets/ycbv/test/000048/scene_camera.json'
 d_scene_camera = json.loads(scene_cam_full_path.read_text())
 K = d_scene_camera[str(VIEW_ID)]['cam_K']
 K = np.array(K).reshape((3,3))
