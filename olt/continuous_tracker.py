@@ -161,16 +161,20 @@ class ContinuousTracker:
                 return
             
             scores_loca = None
+            t1 = time.time()
             if object_poses is None:
-                object_poses, scores_loca = localizer.predict(img, **localizer_predict_kwargs)
+                data_TCO, extra_data = localizer.get_cosy_predictions(img, **localizer_predict_kwargs)
+                print(extra_data['timing_str'])
+                object_poses, scores_loca = localizer.cosypreds2posesscores(data_TCO, extra_data)       
             if fake_localization_delay > 0.0:
                 time.sleep(fake_localization_delay)
+            dt_cosy = time.time() - t1 
+            print(f'Cosy dt_ms: {dt_cosy}')
 
             sid0, vid0 = sid, vid
 
             # reset from scratch with all new detections
             tracker.detected_bodies(object_poses, scores_loca, reset_after_n=0)
-
             # Track
             while not queue_img.empty():
                 img, depth, object_poses_not_used, sid, vid = queue_img.get()
