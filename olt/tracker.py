@@ -12,7 +12,7 @@ import time
 import numpy as np
 from pathlib import Path
 import shutil
-from typing import Union
+from typing import Union, Set, Dict
 import pym3t
 
 
@@ -31,7 +31,7 @@ class Tracker:
     """
     def __init__(self, 
                  obj_model_dir: Union[str,Path],
-                 accepted_objs: Union[set[str],str],
+                 accepted_objs: Union[Set[str],str],
                  cfg: TrackerConfig,
                  rgb_intrinsics: dict,
                  depth_intrinsics: Union[dict,None] = None,
@@ -259,8 +259,8 @@ class Tracker:
 
     def create_bodies(self, 
                     object_model_dir: Path, 
-                    accepted_objs: Union[set[str],str], 
-                    geometry_unit_in_meter: float) -> dict[str, pym3t.Body]:
+                    accepted_objs: Union[Set[str],str], 
+                    geometry_unit_in_meter: float) -> Dict[str, pym3t.Body]:
         
         # Bodies
         object_files = {}
@@ -293,7 +293,7 @@ class Tracker:
 
         return bodies, links, object_files
 
-    def detected_bodies(self, object_poses: dict[str, np.array], scores=None, reset_after_n=0):
+    def detected_bodies(self, object_poses: Dict[str, np.array], scores=None, reset_after_n=0):
         """
         object_poses: list of object name,pose pairs coming from a pose estimator like happy pose
         Multiple objects of the sane

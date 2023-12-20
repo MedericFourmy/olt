@@ -6,7 +6,7 @@
 #
 from __future__ import annotations
 
-from typing import Union
+from typing import Union, Dict
 
 import multiprocessing
 multiprocessing.set_start_method("spawn", force=True)
@@ -112,7 +112,7 @@ class ContinuousTracker:
         object_poses: dict | None = None,
         sid: int | None = None,
         vid: int | None = None,
-    ) -> dict[str, np.ndarray]:
+    ) -> Dict[str, np.ndarray]:
         """Evaluate on the given image, if ground_truth_localizer is used, we need sid
         and vid as well."""
 
@@ -261,7 +261,7 @@ class ContinuousTrackerCosytrack:
         object_poses: dict | None = None,
         sid: int | None = None,
         vid: int | None = None
-    ) -> dict[str, np.ndarray]:
+    ) -> Dict[str, np.ndarray]:
         """Evaluate on the given image, if ground_truth_localizer is used, we need sid
         and vid as well."""
 

@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from dataclasses import dataclass, field
 import logging
+from typing import List
 
 DATASET_NAMES = ['ycbv', 'rotd']
 
@@ -42,8 +43,8 @@ class RegionModalityConfig:
     function_slope: float = 0.5
     learning_rate: float = 1.3
     n_global_iterations: int = 1
-    scales: list[float] = default_list([6, 4, 2, 1]) 
-    standard_deviations: list[float] = default_list([15.0, 5.0, 3.5, 1.5])
+    scales: List[float] = default_list([6, 4, 2, 1]) 
+    standard_deviations: List[float] = default_list([15.0, 5.0, 3.5, 1.5])
 
     # Parameters for histogram calculation
     n_histogram_bins: int = 16
@@ -72,8 +73,8 @@ class DepthModalityConfig:
     use_adaptive_coverage: bool = False
     reference_surface_area: float = 0.0
     stride_length: float = 0.005
-    considered_distances: list[float] = default_list([0.05, 0.02, 0.01])
-    standard_deviations: list[float] = default_list([0.05, 0.03, 0.02])
+    considered_distances: List[float] = default_list([0.05, 0.02, 0.01])
+    standard_deviations: List[float] = default_list([0.05, 0.03, 0.02])
 
     # Parameters for occlusion handling
     measure_occlusions: bool = False
