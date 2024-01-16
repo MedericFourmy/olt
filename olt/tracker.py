@@ -12,11 +12,11 @@ import time
 import numpy as np
 from pathlib import Path
 import shutil
-from typing import Union, Set, Dict
+from typing import Union, Set, Dict, List
 import pym3t
 
 
-from olt.config import TrackerConfig
+from olt.config import TrackerConfig, CameraConfig, RegionModalityConfig, DepthModalityConfig
 
 
 class Tracker:
@@ -33,23 +33,14 @@ class Tracker:
                  obj_model_dir: Union[str,Path],
                  accepted_objs: Union[Set[str],str],
                  cfg: TrackerConfig,
-                 rgb_intrinsics: dict,
-                 depth_intrinsics: Union[dict,None] = None,
-                 color2depth_pose: Union[np.ndarray,None] = None,
+                 cameras_cfg: List[CameraConfig],
                  ) -> None:
         
-        if cfg.use_depth:
-            assert depth_intrinsics is not None
-
         self.cfg = cfg
+        self.cameras_cfg = cameras_cfg
         self.tmp_dir = Path(self.cfg.tmp_dir_name)
         self.obj_model_dir = Path(obj_model_dir)
         self.accepted_objs = accepted_objs
-
-        # Camera parameters
-        self.rgb_intrinsics = rgb_intrinsics
-        self.depth_intrinsics = depth_intrinsics
-        self.color2depth_pose = color2depth_pose if color2depth_pose is not None else np.eye(4)
 
         # some other parameters
         self.geometry_unit_in_meter_ycbv_urdf = 0.001
@@ -58,7 +49,7 @@ class Tracker:
         self.active_tracks = {}
         self.undetected_tracks = {}
 
-        self.image_set = False
+        self.images_set = False
 
         # to send objects behind the camera
         self.T_bc_back = np.eye(4)
@@ -67,57 +58,48 @@ class Tracker:
     def init(self):
         # Check if paths exist
         if not self.tmp_dir.exists(): self.tmp_dir.mkdir(parents=True)
-        self.imgs_dir = self.tmp_dir / 'imgs'
+        imgs_dir = self.tmp_dir / 'imgs'
         # erase image directory
-        if self.imgs_dir.exists(): 
-            shutil.rmtree(self.imgs_dir.as_posix(), ignore_errors=True)
-        self.imgs_dir.mkdir(parents=True, exist_ok=True)
-        assert(self.obj_model_dir.exists())
+        if imgs_dir.exists(): 
+            shutil.rmtree(imgs_dir.as_posix(), ignore_errors=True)
+        imgs_dir.mkdir(parents=True, exist_ok=True)
 
+        assert(self.obj_model_dir.exists())
 
         # Main class
         self.tracker = pym3t.Tracker('tracker', synchronize_cameras=False)
         
         # Renderer for preprocessing
-        self.renderer_geometry = pym3t.RendererGeometry('renderer geometry')
+        self.renderer_geometry = pym3t.RendererGeometry('renderer_geometry')
 
-        self.color_camera = pym3t.DummyColorCamera('cam_color')
-        self.color_camera.color2depth_pose = self.color2depth_pose
-        self.color_camera.camera2world_pose = np.eye(4)  # color camera fixed at the origin of the world
-        self.color_camera.intrinsics = pym3t.Intrinsics(**self.rgb_intrinsics)
-
+        # Cameras
+        self.color_cameras = [create_color_camera(cam_cfg, i) for 
+                              i, cam_cfg in enumerate(self.cameras_cfg)]
         if self.cfg.use_depth:
-            self.depth_camera = pym3t.DummyDepthCamera('cam_depth', depth_scale=self.cfg.depth_scale)
-            self.depth_camera.color2depth_pose = self.color2depth_pose
-            self.depth_camera.camera2world_pose = self.color_camera.depth2color_pose  # world shifted by depth2color transformation
-            self.depth_camera.intrinsics = pym3t.Intrinsics(**self.depth_intrinsics)
+            self.color_cameras = [create_depth_camera(cam_cfg, i) for 
+                                  i, cam_cfg in enumerate(self.cameras_cfg)]
 
+        # Viewers
         if self.cfg.viewer_display or self.cfg.viewer_save:
-            #########################################
-            # Viewers
-            self.color_viewer = pym3t.NormalColorViewer('color_'+self.cfg.viewer_name, self.color_camera, self.renderer_geometry)
-            if self.cfg.viewer_save:
-                self.color_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
-            self.color_viewer.set_opacity(0.5)  # [0.0-1.0]
-            self.color_viewer.display_images = self.cfg.viewer_display
-            self.tracker.AddViewer(self.color_viewer)
-
+            self.color_viewers = [create_color_viewer(self.cfg, color_cam, self.renderer_geometry, imgs_dir)
+                                  for color_cam in self.color_cameras]
+            for viewer in self.color_viewers:
+                self.tracker.AddViewer(viewer)
+            
             if self.cfg.use_depth and self.cfg.display_depth:
-                depth_viewer = pym3t.NormalDepthViewer('depth_'+self.cfg.viewer_name, self.depth_camera, self.renderer_geometry)
-                if self.cfg.viewer_save:
-                    depth_viewer.StartSavingImages(self.imgs_dir.as_posix(), 'png')
-                depth_viewer.display_images = self.cfg.viewer_display
-                self.tracker.AddViewer(depth_viewer)
-            #########################################
+                self.depth_viewers = [create_depth_viewer(self.cfg, depth_cam, self.renderer_geometry, imgs_dir)
+                                      for depth_cam in self.depth_cameras]
+                for viewer in self.depth_viewers:
+                    self.tracker.AddViewer(viewer)
 
         # bodies: create 1 for each object model with body names = body ids
         self.bodies, self.links, self.object_files = self.create_bodies(self.obj_model_dir, self.accepted_objs, self.geometry_unit_in_meter_ycbv_urdf)
         self.set_all_bodies_behind_camera()
 
         self.region_models = {}
-        self.region_modalities = {} 
         self.depth_models = {}
-        self.depth_modalities = {} 
+        self.region_modalities_lst = {} 
+        self.depth_modalities_lst = {} 
         self.optimizers = {}
 
         for bname in self.bodies:
@@ -149,91 +131,23 @@ class Tracker:
                                                             use_random_seed=dm.use_random_seed, 
                                                             image_size=dm.image_size)
 
-            # Q: Possible to create on the fly?
-            self.region_modalities[bname] = pym3t.RegionModality(bname + '_region_modality', body, self.color_camera, self.region_models[bname])
-
-            # Parameters for general distribution
-            self.region_modalities[bname].n_lines_max = self.cfg.region_modality.n_lines_max
-            self.region_modalities[bname].use_adaptive_coverage = self.cfg.region_modality.use_adaptive_coverage
-            self.region_modalities[bname].reference_contour_length = self.cfg.region_modality.reference_contour_length 
-            self.region_modalities[bname].min_continuous_distance = self.cfg.region_modality.min_continuous_distance 
-            self.region_modalities[bname].function_length = self.cfg.region_modality.function_length 
-            self.region_modalities[bname].distribution_length = self.cfg.region_modality.distribution_length 
-            self.region_modalities[bname].function_amplitude = self.cfg.region_modality.function_amplitude 
-            self.region_modalities[bname].function_slope = self.cfg.region_modality.function_slope 
-            self.region_modalities[bname].learning_rate = self.cfg.region_modality.learning_rate 
-            self.region_modalities[bname].n_global_iterations = self.cfg.region_modality.n_global_iterations 
-            self.region_modalities[bname].scales = self.cfg.region_modality.scales 
-            self.region_modalities[bname].standard_deviations = self.cfg.region_modality.standard_deviations 
-            
-            # Parameters for histogram calculation
-            self.region_modalities[bname].n_histogram_bins = self.cfg.region_modality.n_histogram_bins
-            self.region_modalities[bname].learning_rate_f = self.cfg.region_modality.learning_rate_f
-            self.region_modalities[bname].learning_rate_b = self.cfg.region_modality.learning_rate_b
-            self.region_modalities[bname].unconsidered_line_length = self.cfg.region_modality.unconsidered_line_length
-            self.region_modalities[bname].max_considered_line_length = self.cfg.region_modality.max_considered_line_length
-
-            self.region_modalities[bname].visualize_pose_result = False
-            self.region_modalities[bname].visualize_lines_correspondence = False
-            self.region_modalities[bname].visualize_points_correspondence = False
-            self.region_modalities[bname].visualize_points_depth_image_correspondence = False
-            self.region_modalities[bname].visualize_points_depth_rendering_correspondence = False
-            self.region_modalities[bname].visualize_points_result = False
-            self.region_modalities[bname].visualize_points_histogram_image_result = False
-            self.region_modalities[bname].visualize_points_histogram_image_optimization = False
-            self.region_modalities[bname].visualize_points_optimization = False
-            self.region_modalities[bname].visualize_gradient_optimization = False
-            self.region_modalities[bname].visualize_hessian_optimization = False
-            
-
-            if self.cfg.use_depth:
-
-                if self.cfg.measure_occlusions:# or self.cfg.model_occlusions
-                    self.region_modalities[bname].min_n_unoccluded_lines = self.cfg.region_modality.min_n_unoccluded_lines
-                    self.region_modalities[bname].n_unoccluded_iterations = self.cfg.region_modality.n_unoccluded_iterations
-                    self.region_modalities[bname].MeasureOcclusions(self.depth_camera)
-                    # Parameters for occlusion handling
-                    self.region_modalities[bname].measured_depth_offset_radius = self.cfg.region_modality.measured_depth_offset_radius
-                    self.region_modalities[bname].measured_occlusion_radius = self.cfg.region_modality.measured_occlusion_radius
-                    self.region_modalities[bname].measured_occlusion_threshold = self.cfg.region_modality.measured_occlusion_threshold
-
-                if not self.cfg.no_depth_modality:
-                    self.depth_modalities[bname] = pym3t.DepthModality(bname + '_depth_modality', body, self.depth_camera, self.depth_models[bname])
-
-                    # Parameters for general distribution
-                    self.depth_modalities[bname].n_points_max = self.cfg.depth_modality.n_points_max
-                    self.depth_modalities[bname].use_adaptive_coverage = self.cfg.depth_modality.use_adaptive_coverage
-                    self.depth_modalities[bname].reference_surface_area = self.cfg.depth_modality.reference_surface_area
-                    self.depth_modalities[bname].stride_length = self.cfg.depth_modality.stride_length
-                    self.depth_modalities[bname].considered_distances = self.cfg.depth_modality.considered_distances
-                    self.depth_modalities[bname].standard_deviations = self.cfg.depth_modality.standard_deviations
-
-                    self.depth_modalities[bname].visualize_correspondences_correspondence = False
-                    self.depth_modalities[bname].visualize_points_correspondence = False
-                    self.depth_modalities[bname].visualize_points_depth_rendering_correspondence = False
-                    self.depth_modalities[bname].visualize_points_optimization = False
-                    self.depth_modalities[bname].visualize_points_result = False
-
-                    if self.cfg.measure_occlusions:# or self.cfg.model_occlusions
-                        self.depth_modalities[bname].min_n_unoccluded_points = self.cfg.depth_modality.min_n_unoccluded_points
-                        self.depth_modalities[bname].n_unoccluded_iterations = self.cfg.depth_modality.n_unoccluded_iterations
-                        self.depth_modalities[bname].measured_occlusion_radius = self.cfg.depth_modality.measured_occlusion_radius
-                        self.depth_modalities[bname].measured_occlusion_threshold = self.cfg.depth_modality.measured_occlusion_threshold
 
 
-                # TODO: Model occlusions
-                # if self.cfg.model_occlusions:  
-                #     self.region_modalities[bname].modeled_depth_offset_radius = self.cfg.region_modality.modeled_depth_offset_radius
-                #     self.region_modalities[bname].modeled_occlusion_radius = self.cfg.region_modality.modeled_occlusion_radius
-                #     self.region_modalities[bname].modeled_occlusion_threshold = self.cfg.region_modality.modeled_occlusion_threshold
+            self.region_modalities_lst[bname] = [create_region_modality(self.region_models[bname], body, color_cam, self.cfg.region_modality)
+                                                    for color_cam in self.color_cameras]
 
-            link.AddModality(self.region_modalities[bname])
             if self.cfg.use_depth and not self.cfg.no_depth_modality:
-                link.AddModality(self.region_modalities[bname])
+                self.region_modalities_lst[bname] = [create_depth_modality(self.depth_models[bname], body, depth_cam, self.cfg.depth_modality)
+                                                         for depth_cam in self.depth_cameras]
+            
+            for region_modality in self.region_modalities_lst[bname]:
+                link.AddModality(region_modality)
+                if self.cfg.use_depth and not self.cfg.no_depth_modality:
+                    for depth_modality in self.depth_modalities_lst[bname]:
+                        link.AddModality(depth_modality)
 
             # Add remove optimizers?
             self.optimizers[bname] = pym3t.Optimizer(bname+'_optimizer', link, self.cfg.tikhonov_parameter_rotation, self.cfg.tikhonov_parameter_translation)
-
             self.tracker.AddOptimizer(self.optimizers[bname])
 
         # execute tracking loop
@@ -363,23 +277,25 @@ class Tracker:
                 if obj_name in self.undetected_tracks:
                     del self.undetected_tracks[obj_name]
 
-    def set_image(self, rgb: np.array, depth: Union[np.array,None] = None):
-        self.color_camera.image = rgb
-        if self.cfg.use_depth:
-            self.depth_camera.image = depth
+    def set_images(self, color_lst: np.array, depth_lst: Union[List[np.array],None] = None):
+        if depth_lst is not None:
+            assert len(color_lst) == len(depth_lst)
+        for i in range(len(color_lst)):
+            self.color_cameras[i].image = color_lst[i]
+            if self.cfg.use_depth:
+                self.depth_cameras[i].image = depth_lst[i]
 
         # verifying the images have been properly setup
         ok = self.tracker.UpdateCameras(True) 
         if not ok:
             raise ValueError('Something is wrong with the provided images')
-        self.image_set = True
+        self.images_set = True
 
     def track(self):
-        assert self.image_set, "No image was set yet! Call tracker.set_image(img)"
+        assert self.images_set, "No image was set yet! Call tracker.set_image(img)"
         if self.iteration == 0:
             # print('StartModalities!')
             # self.tracker.StartModalities(self.iteration)
-            print('ExecuteStartingStep!')
             self.tracker.ExecuteStartingStep(self.iteration)
             
 
@@ -407,3 +323,132 @@ class Tracker:
         return preds, self.active_tracks
 
 
+
+
+
+def create_color_camera(cam_cfg: CameraConfig, idx):
+    color_camera = pym3t.DummyColorCamera(f'cam_color_{idx}')
+    color_camera.camera2world_pose = cam_cfg.color2world_pose
+    color_camera.intrinsics = pym3t.Intrinsics(**cam_cfg.rgb_intrinsics)
+    return color_camera
+
+def create_depth_camera(cam_cfg: CameraConfig, idx):
+    assert cam_cfg.depth2world_pose is not None and cam_cfg.depth_intrinsics is not None, f"depth extrinsics or intrinsics not set {idx}"
+    depth_camera = pym3t.DummyDepthCamera(f'cam_depth_{idx}')
+    depth_camera.camera2world_pose = cam_cfg.depth2world_pose
+    depth_camera.intrinsics = pym3t.Intrinsics(**cam_cfg.depth_intrinsics)
+    return depth_camera
+
+def create_color_viewer(cfg: TrackerConfig, color_camera: pym3t.DummyColorCamera, 
+                 renderer_geometry: pym3t.RendererGeometry, imgs_dir: Path):
+    viewer = pym3t.NormalColorViewer(f'normal_viewer_{color_camera.name}', color_camera, renderer_geometry)
+    if cfg.viewer_save:
+        viewer.StartSavingImages(imgs_dir.as_posix(), 'png')
+    viewer.set_opacity(0.5)  # [0.0-1.0]
+    viewer.display_images = cfg.viewer_display
+    return viewer
+
+def create_depth_viewer(cfg: TrackerConfig, depth_camera: pym3t.DummyDepthCamera, 
+                 renderer_geometry: pym3t.RendererGeometry, imgs_dir: Path):
+    viewer = pym3t.NormalColorViewer(f'normal_viewer_{depth_camera.name}', depth_camera, renderer_geometry)
+    if cfg.viewer_save:
+        viewer.StartSavingImages(imgs_dir.as_posix(), 'png')
+    viewer.set_opacity(0.5)  # [0.0-1.0]
+    viewer.display_images = cfg.viewer_display
+    return viewer
+
+
+def create_region_modality(region_model: pym3t.RegionModel, body: pym3t.Body, 
+                           color_camera: pym3t.DummyColorCamera, cfg_rm: RegionModalityConfig, depth_camera=None):
+
+    # Q: Possible to create on the fly?
+    region_modality = pym3t.RegionModality(f'region_modality_{color_camera.name}_{body.name}', body, color_camera, region_model)
+
+    # Parameters for general distribution
+    region_modality.n_lines_max = cfg_rm.n_lines_max
+    region_modality.use_adaptive_coverage = cfg_rm.use_adaptive_coverage
+    region_modality.reference_contour_length = cfg_rm.reference_contour_length 
+    region_modality.min_continuous_distance = cfg_rm.min_continuous_distance 
+    region_modality.function_length = cfg_rm.function_length 
+    region_modality.distribution_length = cfg_rm.distribution_length 
+    region_modality.function_amplitude = cfg_rm.function_amplitude 
+    region_modality.function_slope = cfg_rm.function_slope 
+    region_modality.learning_rate = cfg_rm.learning_rate 
+    region_modality.n_global_iterations = cfg_rm.n_global_iterations 
+    region_modality.scales = cfg_rm.scales 
+    region_modality.standard_deviations = cfg_rm.standard_deviations 
+    
+    # Parameters for histogram calculation
+    region_modality.n_histogram_bins = cfg_rm.n_histogram_bins
+    region_modality.learning_rate_f = cfg_rm.learning_rate_f
+    region_modality.learning_rate_b = cfg_rm.learning_rate_b
+    region_modality.unconsidered_line_length = cfg_rm.unconsidered_line_length
+    region_modality.max_considered_line_length = cfg_rm.max_considered_line_length
+
+    region_modality.visualize_pose_result = False
+    region_modality.visualize_lines_correspondence = False
+    region_modality.visualize_points_correspondence = False
+    region_modality.visualize_points_depth_image_correspondence = False
+    region_modality.visualize_points_depth_rendering_correspondence = False
+    region_modality.visualize_points_result = False
+    region_modality.visualize_points_histogram_image_result = False
+    region_modality.visualize_points_histogram_image_optimization = False
+    region_modality.visualize_points_optimization = False
+    region_modality.visualize_gradient_optimization = False
+    region_modality.visualize_hessian_optimization = False
+    
+    # Occlusion handling
+    if cfg_rm.model_occlusions or (cfg_rm.measure_occlusions and depth_camera is not None):
+        region_modality.min_n_unoccluded_points = cfg_rm.min_n_unoccluded_points
+        region_modality.n_unoccluded_iterations = cfg_rm.n_unoccluded_iterations
+    
+    if cfg_rm.measure_occlusions and depth_camera is not None:
+        region_modality.MeasureOcclusions(depth_camera)
+        region_modality.measured_depth_offset_radius = cfg_rm.measured_depth_offset_radius
+        region_modality.measured_occlusion_radius = cfg_rm.measured_occlusion_radius
+        region_modality.measured_occlusion_threshold = cfg_rm.measured_occlusion_threshold
+
+    # if cfg_rm.model_occlusions:  
+    #     region_modality.ModelOcclusions(depth_renderer)
+    #     region_modality.modeled_depth_offset_radius = cfg_rm.modeled_depth_offset_radius
+    #     region_modality.modeled_occlusion_radius = cfg_rm.modeled_occlusion_radius
+    #     region_modality.modeled_occlusion_threshold = cfg_rm.modeled_occlusion_threshold
+
+    return region_modality
+
+
+def create_depth_modality(depth_model: pym3t.DepthModel, body: pym3t.Body, 
+                          depth_camera: pym3t.DummyDepthCamera, cfg_dm: DepthModalityConfig):
+    depth_modality = pym3t.DepthModality(f'depth_modality_{depth_camera.name}_{body.name}', body, depth_camera, depth_model)
+
+    # Parameters for general distribution
+    depth_modality.n_points_max = cfg_dm.n_points_max
+    depth_modality.use_adaptive_coverage = cfg_dm.use_adaptive_coverage
+    depth_modality.reference_surface_area = cfg_dm.reference_surface_area
+    depth_modality.stride_length = cfg_dm.stride_length
+    depth_modality.considered_distances = cfg_dm.considered_distances
+    depth_modality.standard_deviations = cfg_dm.standard_deviations
+
+    depth_modality.visualize_correspondences_correspondence = False
+    depth_modality.visualize_points_correspondence = False
+    depth_modality.visualize_points_depth_rendering_correspondence = False
+    depth_modality.visualize_points_optimization = False
+    depth_modality.visualize_points_result = False
+
+    # Occlusion handling
+    if cfg_dm.model_occlusions or cfg_dm.measure_occlusions:
+        depth_modality.min_n_unoccluded_points = cfg_dm.min_n_unoccluded_points
+        depth_modality.n_unoccluded_iterations = cfg_dm.n_unoccluded_iterations
+    
+    if cfg_dm.measure_occlusions:
+        depth_modality.MeasureOcclusions()
+        depth_modality.measured_depth_offset_radius = cfg_dm.measured_depth_offset_radius
+        depth_modality.measured_occlusion_radius = cfg_dm.measured_occlusion_radius
+        depth_modality.measured_occlusion_threshold = cfg_dm.measured_occlusion_threshold
+
+    # if cfg_dm.model_occlusions:  
+    #     depth_modality.modeled_depth_offset_radius = cfg_dm.modeled_depth_offset_radius
+    #     depth_modality.modeled_occlusion_radius = cfg_dm.modeled_occlusion_radius
+    #     depth_modality.modeled_occlusion_threshold = cfg_dm.modeled_occlusion_threshold
+
+    return depth_modality

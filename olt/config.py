@@ -1,8 +1,9 @@
 import os
+import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
 import logging
-from typing import List
+from typing import List, Union
 
 DATASET_NAMES = ['ycbv', 'rotd']
 
@@ -17,6 +18,13 @@ OBJ_MODEL_DIRS = {ds_name: HAPPYPOSE_DATA_DIR / Path('urdfs') / ds_name for ds_n
 default_list = lambda l: field(default_factory=lambda: l)
 
 
+
+@dataclass
+class CameraConfig:
+    rgb_intrinsics: dict
+    color2world_pose: np.ndarray = np.eye(4)   # 4x4 SE(3) matrix
+    depth_intrinsics: Union[dict,None] = None
+    depth2world_pose: Union[np.ndarray,None] = None   # 4x4 SE(3) matrix
 
 @dataclass
 class ModelConfig:
@@ -54,6 +62,8 @@ class RegionModalityConfig:
     max_considered_line_length: float = 20.0
 
     # Parameters for occlusion handling
+    n_unoccluded_iterations: int = 10  # common
+    min_n_unoccluded_lines: int = 0    # common
     measure_occlusions: bool = False
     measured_depth_offset_radius: float = 0.01
     measured_occlusion_radius: float = 0.01
@@ -62,8 +72,7 @@ class RegionModalityConfig:
     modeled_depth_offset_radius: float = 0.01
     modeled_occlusion_radius: float = 0.01
     modeled_occlusion_threshold: float = 0.03
-    n_unoccluded_iterations: int = 10
-    min_n_unoccluded_lines: int = 0
+
 
 
 @dataclass
@@ -77,6 +86,8 @@ class DepthModalityConfig:
     standard_deviations: List[float] = default_list([0.05, 0.03, 0.02])
 
     # Parameters for occlusion handling
+    n_unoccluded_iterations: int = 10  # common    
+    min_n_unoccluded_points: int = 0   # common
     measure_occlusions: bool = False
     measured_depth_offset_radius: float = 0.01
     measured_occlusion_radius: float = 0.01
@@ -85,8 +96,7 @@ class DepthModalityConfig:
     modeled_depth_offset_radius: float = 0.01
     modeled_occlusion_radius: float = 0.01
     modeled_occlusion_threshold: float = 0.03
-    n_unoccluded_iterations: int = 10
-    min_n_unoccluded_points: int = 0
+
 
 
 """
@@ -95,14 +105,12 @@ Default value taken from M3T YCBV evaluation
 @dataclass
 class TrackerConfig:
     tmp_dir_name: str = 'tmp'
-    viewer_name: str = 'normal_viewer'
     use_depth: bool = False
     viewer_display: bool = False
     display_depth: bool = False
     viewer_save: bool = False
     no_depth_modality: bool = False
     depth_scale: float = 0.001
-    measure_occlusions: bool = False
     
     # Optimization params
     n_corr_iterations: int = 4
