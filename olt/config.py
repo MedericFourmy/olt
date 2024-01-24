@@ -138,6 +138,7 @@ class LocalizerConfig:
     n_coarse: int = 1 
     n_refiner: int = 3
     training_type: str = 'pbr'  # pbr or synt+real
+    ds_name: str = 'ycbv'
 
 @dataclass
 class EvaluationBOPConfig:
