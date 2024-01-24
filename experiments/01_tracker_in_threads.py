@@ -37,14 +37,14 @@ if __name__ == "__main__":
     sid = list(sorted(reader.map_sids_vids.keys()))[0]
     vid = reader.map_sids_vids[sid][0]
 
-    rgb_intrinsics = reader.get_intrinsics(sid, vid)
-    depth_intrinsics = rgb_intrinsics if USE_DEPTH else None  # same for YCBV
+    color_intrinsics = reader.get_intrinsics(sid, vid)
+    depth_intrinsics = color_intrinsics if USE_DEPTH else None  # same for YCBV
 
     continuous_tracker = ContinuousTracker(
         tracker_cfg=eval_cfg.tracker_cfg,
         localizer_cfg=eval_cfg.localizer_cfg,
         ds_name=eval_cfg.ds_name,
-        rgb_intrinsics=rgb_intrinsics,
+        color_intrinsics=color_intrinsics,
         depth_intrinsics=depth_intrinsics,
         collect_statistics=True,
         fake_localization_delay=FAKE_LOCALIZATION_DELAY

@@ -30,7 +30,7 @@ class ContinuousTracker:
         tracker_cfg: TrackerConfig,
         localizer_cfg: LocalizerConfig,
         ds_name: str,
-        rgb_intrinsics: dict,
+        color_intrinsics: dict,
         depth_intrinsics: Union[dict,None] = None,
         color2depth_pose: Union[np.ndarray,None] = None,
         collect_statistics: bool = False,
@@ -56,7 +56,7 @@ class ContinuousTracker:
             OBJ_MODEL_DIRS[ds_name],
             accepted_objects,
             tracker_cfg,
-            rgb_intrinsics,
+            color_intrinsics,
             depth_intrinsics,
             color2depth_pose
         )
@@ -71,7 +71,7 @@ class ContinuousTracker:
         local_tracker_args[2].viewer_save = False
         # local_tracker_args[2].tmp_dir_name += "2"
 
-        K, _, _ = intrinsics2Kres(**rgb_intrinsics)
+        K, _, _ = intrinsics2Kres(**color_intrinsics)
 
         localizer_args = (ds_name, localizer_cfg)
         localizer_predict_kwargs = dict(K=K, n_coarse=localizer_cfg.n_coarse, n_refiner=localizer_cfg.n_refiner)
@@ -206,7 +206,7 @@ class ContinuousTrackerCosytrack:
         self,
         localizer_cfg: LocalizerConfig,
         ds_name: str,
-        rgb_intrinsics: dict,
+        color_intrinsics: dict,
         collect_statistics: bool = False,
     ) -> None:
         """
@@ -223,7 +223,7 @@ class ContinuousTrackerCosytrack:
 
         self._initialized = False
 
-        self.K, _, _ = intrinsics2Kres(**rgb_intrinsics)
+        self.K, _, _ = intrinsics2Kres(**color_intrinsics)
 
         localizer_args = (ds_name, localizer_cfg)
         self.main_localizer = Localizer(*localizer_args)

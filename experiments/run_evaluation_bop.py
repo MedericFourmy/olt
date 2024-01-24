@@ -199,10 +199,10 @@ if __name__ == '__main__':
         rate = Rate(args.img_freq)
 
     elif args.method == 'only_tracker_init':
-        rgb_intrinsics = reader.get_intrinsics(all_sids[0], reader.map_sids_vids[all_sids[0]][0])
-        K, height, width = intrinsics2Kres(**rgb_intrinsics)
-        depth_intrinsics = rgb_intrinsics if args.use_depth else None  # same for YCBV
-        tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, rgb_intrinsics, depth_intrinsics, np.eye(4))
+        color_intrinsics = reader.get_intrinsics(all_sids[0], reader.map_sids_vids[all_sids[0]][0])
+        K, height, width = intrinsics2Kres(**color_intrinsics)
+        depth_intrinsics = color_intrinsics if args.use_depth else None  # same for YCBV
+        tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, color_intrinsics, depth_intrinsics, np.eye(4))
         tracker.init()
         sys.exit(0)
     
@@ -242,19 +242,19 @@ if __name__ == '__main__':
             sid0 = all_sids[0]
             vid0 = reader.map_sids_vids[sid0][0]
             rgb = reader.get_obs(sid0, vid0).rgb
-            rgb_intrinsics = reader.get_intrinsics(sid0, vid0)
-            K, height, width = intrinsics2Kres(**rgb_intrinsics)
+            color_intrinsics = reader.get_intrinsics(sid0, vid0)
+            K, height, width = intrinsics2Kres(**color_intrinsics)
             localizer.predict(rgb, K, n_coarse=1, n_refiner=eval_cfg.localizer_cfg.n_refiner)
 
         if args.method == 'threaded' and args.use_cosypose_as_tracker:
             sid0 = all_sids[0]
             vid0 = reader.map_sids_vids[sid0][0]
             rgb = reader.get_obs(sid0, vid0).rgb
-            rgb_intrinsics = reader.get_intrinsics(sid0, vid0)
+            color_intrinsics = reader.get_intrinsics(sid0, vid0)
             continuous_tracker = ContinuousTrackerCosytrack(
                 localizer_cfg=eval_cfg.localizer_cfg,
                 ds_name=eval_cfg.ds_name,
-                rgb_intrinsics=rgb_intrinsics,
+                color_intrinsics=color_intrinsics,
                 collect_statistics=False,
                 reset_after_n=args.reset_after_n
             )
@@ -264,9 +264,9 @@ if __name__ == '__main__':
         for sid in all_sids:
             vids = reader.map_sids_vids[sid]
 
-            rgb_intrinsics = reader.get_intrinsics(sid, vids[0])
-            K, height, width = intrinsics2Kres(**rgb_intrinsics)
-            depth_intrinsics = rgb_intrinsics if args.use_depth else None  # same for YCBV
+            color_intrinsics = reader.get_intrinsics(sid, vids[0])
+            K, height, width = intrinsics2Kres(**color_intrinsics)
+            depth_intrinsics = color_intrinsics if args.use_depth else None  # same for YCBV
             obs = reader.get_obs(sid, vids[0])
             rgb = obs.rgb
             depth = obs.depth if args.use_depth else None
@@ -278,7 +278,7 @@ if __name__ == '__main__':
                     tracker_cfg=eval_cfg.tracker_cfg,
                     localizer_cfg=eval_cfg.localizer_cfg,
                     ds_name=eval_cfg.ds_name,
-                    rgb_intrinsics=rgb_intrinsics,
+                    color_intrinsics=color_intrinsics,
                     depth_intrinsics=depth_intrinsics,
                     collect_statistics=False,
                     fake_localization_delay=args.fake_localization_delay,
@@ -292,11 +292,11 @@ if __name__ == '__main__':
                 continuous_tracker(rgb, depth, obj_poses, sid, vids[0])
 
             elif args.method == 'cosyrefined':
-                tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, rgb_intrinsics, depth_intrinsics, np.eye(4))
+                tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, color_intrinsics, depth_intrinsics, np.eye(4))
                 tracker.init()
 
             elif args.method == 'trackfromstart':
-                tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, rgb_intrinsics, depth_intrinsics, np.eye(4))
+                tracker = Tracker(OBJ_MODEL_DIRS[ds_name], 'all', eval_cfg.tracker_cfg, color_intrinsics, depth_intrinsics, np.eye(4))
                 tracker.init()
                 # Init tracker poses on the first image using GT or localizer
                 if args.use_gt_for_localization:

@@ -31,7 +31,8 @@ eval_cfg.tracker_cfg.n_update_iterations = 2
 # eval_cfg.tracker_cfg.n_corr_iterations = 0
 # eval_cfg.tracker_cfg.n_update_iterations = 0
 eval_cfg.tracker_cfg.use_depth = USE_DEPTH
-eval_cfg.tracker_cfg.measure_occlusions = True
+eval_cfg.tracker_cfg.region_modality.measure_occlusions = True
+eval_cfg.tracker_cfg.depth_modality.measure_occlusions = True
 
 # eval_cfg.tracker_cfg.n_corr_iterations = 0
 # eval_cfg.tracker_cfg.n_update_iterations = 0

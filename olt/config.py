@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
 import logging
-from typing import List, Union
+from typing import List, Union, Dict
 
 DATASET_NAMES = ['ycbv', 'rotd']
 
@@ -15,15 +15,15 @@ BOP_DS_DIRS = {ds_name: HAPPYPOSE_DATA_DIR / Path('bop_datasets') / ds_name for 
 OBJ_MODEL_DIRS = {ds_name: HAPPYPOSE_DATA_DIR / Path('urdfs') / ds_name for ds_name in DATASET_NAMES}
 
 # Adapted from https://stackoverflow.com/questions/53632152/why-cant-dataclasses-have-mutable-defaults-in-their-class-attributes-declaratio
-default_list = lambda l: field(default_factory=lambda: l)
+default_mut = lambda l: field(default_factory=lambda: l)
 
 
 
 @dataclass
 class CameraConfig:
-    rgb_intrinsics: dict
+    color_intrinsics: Dict
     color2world_pose: np.ndarray = np.eye(4)   # 4x4 SE(3) matrix
-    depth_intrinsics: Union[dict,None] = None
+    depth_intrinsics: Union[Dict,None] = None
     depth2world_pose: Union[np.ndarray,None] = None   # 4x4 SE(3) matrix
 
 @dataclass
@@ -51,8 +51,8 @@ class RegionModalityConfig:
     function_slope: float = 0.5
     learning_rate: float = 1.3
     n_global_iterations: int = 1
-    scales: List[float] = default_list([6, 4, 2, 1]) 
-    standard_deviations: List[float] = default_list([15.0, 5.0, 3.5, 1.5])
+    scales: List[float] = default_mut([6, 4, 2, 1]) 
+    standard_deviations: List[float] = default_mut([15.0, 5.0, 3.5, 1.5])
 
     # Parameters for histogram calculation
     n_histogram_bins: int = 16
@@ -82,8 +82,8 @@ class DepthModalityConfig:
     use_adaptive_coverage: bool = False
     reference_surface_area: float = 0.0
     stride_length: float = 0.005
-    considered_distances: List[float] = default_list([0.05, 0.02, 0.01])
-    standard_deviations: List[float] = default_list([0.05, 0.03, 0.02])
+    considered_distances: List[float] = default_mut([0.05, 0.02, 0.01])
+    standard_deviations: List[float] = default_mut([0.05, 0.03, 0.02])
 
     # Parameters for occlusion handling
     n_unoccluded_iterations: int = 10  # common    
@@ -98,19 +98,26 @@ class DepthModalityConfig:
     modeled_occlusion_threshold: float = 0.03
 
 
-
 """
 Default value taken from M3T YCBV evaluation
 """
 @dataclass
 class TrackerConfig:
+    cameras: Dict[int,CameraConfig]
+
+    region_modalities: Dict[int,RegionModalityConfig] = default_mut({})
+    depth_modalities: Dict[int,DepthModalityConfig] = default_mut({})
+
+    # Models params
+    region_model: ModelConfig = ModelConfig()
+    depth_model: ModelConfig = ModelConfig()
+
     tmp_dir_name: str = 'tmp'
-    use_depth: bool = False
     viewer_display: bool = False
     display_depth: bool = False
     viewer_save: bool = False
-    no_depth_modality: bool = False
     depth_scale: float = 0.001
+    geometry_unit_in_meter: float = 0.001
     
     # Optimization params
     n_corr_iterations: int = 4
@@ -118,13 +125,10 @@ class TrackerConfig:
     tikhonov_parameter_rotation: float = 1000.0
     tikhonov_parameter_translation: float = 30000.0
 
-    # Models params
-    region_model: ModelConfig = ModelConfig()
-    depth_model: ModelConfig = ModelConfig()
 
-    # Modalities params
-    region_modality: RegionModalityConfig = RegionModalityConfig()
-    depth_modality: DepthModalityConfig = DepthModalityConfig()
+
+
+
 
 @dataclass
 class LocalizerConfig:
@@ -137,9 +141,9 @@ class LocalizerConfig:
 
 @dataclass
 class EvaluationBOPConfig:
-    tracker_cfg: TrackerConfig = TrackerConfig()
-    localizer_cfg: LocalizerConfig = LocalizerConfig()
-    ds_name: str = 'ycbv'
+    tracker_cfg: TrackerConfig
+    localizer_cfg: LocalizerConfig
+    ds_name: str
 
 
 logcfg = { 'version': 1,

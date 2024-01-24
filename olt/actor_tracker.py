@@ -742,7 +742,7 @@ class TrackerActor(Actor):
         tcfg.viewer_display = False
         tcfg.viewer_save = True
         # self.tracker = Tracker(intrinsics, OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg)
-        self.tracker = Tracker(OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg, rgb_intrinsics=intrinsics)
+        self.tracker = Tracker(OBJ_MODEL_DIRS[DS_NAME], accepted_objs, tcfg, color_intrinsics=intrinsics)
 
         self.tracker.init()
 
