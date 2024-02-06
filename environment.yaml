@@ -99,9 +99,9 @@ dependencies:
       - webdataset
       - roma 
       - torchgeometry
-      - git+https://github.com/MedericFourmy/pym3t.git
-      # extra for olt
-      - thespian
-      - pytest-benchmark
-      - hypothesis
+      - git+https://github.com/agimus-project/pym3t.git
+      # extra for olt-thespian
+      # - thespian
+      # - pytest-benchmark
+      # - hypothesis
 
