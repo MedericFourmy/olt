@@ -72,6 +72,7 @@ T_co_preds, scores = localizer.predict(imgs, Ks, n_coarse=1, n_refiner=3)
 
 # Initial guess from one of the views and CosyPose batch prediction 
 INIT_IMG = 3
+REFINE_MULTI = False
 T_wc_init = T_wc_gt_lst[TEST_IMG_IDS[INIT_IMG]]
 T_co_init_dic = T_co_preds[TEST_IMG_IDS[INIT_IMG]]
 T_wo0_dic = {k: T_wc_init @ T_co for k, T_co in T_co_init_dic.items()}
@@ -103,8 +104,9 @@ tracker.init()
 tracker.set_images(imgs)
 tracker.detected_bodies(T_wo0_dic)
 T_wo_dic, scores = tracker.get_current_preds()
-dt = tracker.track()
-dt = tracker.track()
+if REFINE_MULTI:
+    dt = tracker.track()
+    dt = tracker.track()
 # print('track took (ms):', 1000*dt)
 tracker.update_viewers()
 cv2.waitKey(0)
