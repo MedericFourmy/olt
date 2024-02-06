@@ -73,6 +73,19 @@ class RegionModalityConfig:
     modeled_occlusion_radius: float = 0.01
     modeled_occlusion_threshold: float = 0.03
 
+    # DEBUG
+    visualize_pose_result: bool = False
+    visualize_lines_correspondence: bool = False
+    visualize_points_correspondence: bool = False
+    visualize_points_depth_image_correspondence: bool = False
+    visualize_points_depth_rendering_correspondence: bool = False
+    visualize_points_result: bool = False
+    visualize_points_histogram_image_result: bool = False
+    visualize_points_histogram_image_optimization: bool = False
+    visualize_points_optimization: bool = False
+    visualize_gradient_optimization: bool = False
+    visualize_hessian_optimization: bool = False
+
 
 
 @dataclass

@@ -435,17 +435,17 @@ def create_region_modality(region_model: pym3t.RegionModel, body: pym3t.Body,
     region_modality.unconsidered_line_length = cfg_rm.unconsidered_line_length
     region_modality.max_considered_line_length = cfg_rm.max_considered_line_length
 
-    region_modality.visualize_pose_result = False
-    region_modality.visualize_lines_correspondence = False
-    region_modality.visualize_points_correspondence = False
-    region_modality.visualize_points_depth_image_correspondence = False
-    region_modality.visualize_points_depth_rendering_correspondence = False
-    region_modality.visualize_points_result = False
-    region_modality.visualize_points_histogram_image_result = False
-    region_modality.visualize_points_histogram_image_optimization = False
-    region_modality.visualize_points_optimization = False
-    region_modality.visualize_gradient_optimization = False
-    region_modality.visualize_hessian_optimization = False
+    region_modality.visualize_pose_result = cfg_rm.visualize_pose_result
+    region_modality.visualize_lines_correspondence = cfg_rm.visualize_lines_correspondence
+    region_modality.visualize_points_correspondence = cfg_rm.visualize_points_correspondence
+    region_modality.visualize_points_depth_image_correspondence = cfg_rm.visualize_points_depth_image_correspondence
+    region_modality.visualize_points_depth_rendering_correspondence = cfg_rm.visualize_points_depth_rendering_correspondence
+    region_modality.visualize_points_result = cfg_rm.visualize_points_result
+    region_modality.visualize_points_histogram_image_result = cfg_rm.visualize_points_histogram_image_result
+    region_modality.visualize_points_histogram_image_optimization = cfg_rm.visualize_points_histogram_image_optimization
+    region_modality.visualize_points_optimization = cfg_rm.visualize_points_optimization
+    region_modality.visualize_gradient_optimization = cfg_rm.visualize_gradient_optimization
+    region_modality.visualize_hessian_optimization = cfg_rm.visualize_hessian_optimization
     
     # Occlusion handling
     if cfg_rm.model_occlusions or (cfg_rm.measure_occlusions and depth_camera is not None):

@@ -33,6 +33,17 @@ def intrinsics2Kres(fu, fv, ppu, ppv, width, height):
 
 
 def Kres2intrinsics(K, width, height):
+    """
+    width, height = 640, 480
+    fx, fy, cx, cy = 100, 200, 300, 400
+    K = np.array([fx, 0, cx,
+                  0, fy, cy,
+                  0,  0,  1
+                ])
+    intr = Kres2intrinsics(K, width, height)
+    print(intr)
+    
+    """
     return {
         'fu': K[0,0], 
         'fv': K[1,1], 
