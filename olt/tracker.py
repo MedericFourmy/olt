@@ -373,7 +373,7 @@ def create_color_viewer(cfg: TrackerConfig, color_camera: pym3t.DummyColorCamera
 
 def create_depth_viewer(cfg: TrackerConfig, depth_camera: pym3t.DummyDepthCamera, 
                  renderer_geometry: pym3t.RendererGeometry, imgs_dir: Path):
-    viewer = pym3t.NormalColorViewer(f'normal_viewer_{depth_camera.name}', depth_camera, renderer_geometry)
+    viewer = pym3t.NormalDepthViewer(f'normal_viewer_{depth_camera.name}', depth_camera, renderer_geometry)
     if cfg.viewer_save: viewer.StartSavingImages(imgs_dir.as_posix(), 'png')
     viewer.set_opacity(0.5)  # [0.0-1.0]
     viewer.display_images = cfg.viewer_display
